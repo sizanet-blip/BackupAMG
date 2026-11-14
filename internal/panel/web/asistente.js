@@ -1,6 +1,6 @@
-const iconoDisco = icono("hard-drive");
-const iconoCarpeta = icono("folder");
-const iconoReloj = icono("clock");
+const iconoDisco = iconoSvg("hard-drive");
+const iconoCarpeta = iconoSvg("folder");
+const iconoReloj = iconoSvg("clock");
 
 // Título grande de cada paso, con su frase de ayuda.
 function tituloPaso(titulo, ayuda) {

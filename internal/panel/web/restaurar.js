@@ -52,7 +52,7 @@ function pintarRestaurar() {
   const subir = document.createElement("button");
   subir.type = "button";
   subir.className = "secundario explorador-subir";
-  subir.innerHTML = icono("arrow-up");
+  subir.innerHTML = iconoSvg("arrow-up");
   const subirTexto = document.createElement("span");
   subirTexto.textContent = textos.carpetaSuperior;
   subir.append(subirTexto);
@@ -137,8 +137,8 @@ function pintarRestaurar() {
     const icono = document.createElement("span");
     icono.className = "fila-carpeta-icono";
     icono.innerHTML = esCarpeta
-      ? icono("folder")
-      : icono("file");
+      ? iconoSvg("folder")
+      : iconoSvg("file");
     return icono;
   }
 

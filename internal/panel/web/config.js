@@ -1,5 +1,5 @@
 ﻿// Iconos Lucide (ISC) del sprite que hay al principio de index.html. Un único juego, trazo de 2 px.
-function icono(nombre) {
+function iconoSvg(nombre) {
   return '<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-' + nombre + '"/></svg>';
 }
 
@@ -499,7 +499,7 @@ function pintarCopiar() {
       fila.className = "fila-carpeta";
       const icono = document.createElement("span");
       icono.className = "fila-carpeta-icono";
-      icono.innerHTML = icono("folder");
+      icono.innerHTML = iconoSvg("folder");
       const nombre = document.createElement("span");
       nombre.className = "fila-carpeta-ruta";
       nombre.textContent = ruta;
@@ -610,7 +610,7 @@ function pintarCuando() {
     fila.className = "fila-hora";
     const icono = document.createElement("span");
     icono.className = "fila-carpeta-icono";
-    icono.innerHTML = icono("clock");
+    icono.innerHTML = iconoSvg("clock");
     const campo = document.createElement("input");
     campo.type = "time";
     campo.step = "60";
@@ -874,7 +874,7 @@ function crearExplorador(opciones) {
   const subir = document.createElement("button");
   subir.type = "button";
   subir.className = "secundario explorador-subir";
-  subir.innerHTML = icono("arrow-up");
+  subir.innerHTML = iconoSvg("arrow-up");
   const subirTexto = document.createElement("span");
   subirTexto.textContent = textos.carpetaSuperior;
   subir.append(subirTexto);
@@ -936,8 +936,8 @@ function crearExplorador(opciones) {
     const icono = document.createElement("span");
     icono.className = "fila-carpeta-icono";
     icono.innerHTML = unidad
-      ? icono("hard-drive")
-      : icono("folder");
+      ? iconoSvg("hard-drive")
+      : iconoSvg("folder");
     return icono;
   }
 

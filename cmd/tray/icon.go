@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"image"
+	"image/color"
 	"image/draw"
 	"image/png"
 )
@@ -22,9 +23,10 @@ const (
 	iconOff   = "tray-off.ico"
 )
 
-// trayICO devuelve el icono de un estado en el tamaño del fichero que más se acerca a px
-// (el menor que no sea más pequeño que px, o el mayor si no hay). Sale en el formato que
-// espera iconHandle. Los ficheros de iconos/ vienen en PNG dentro del .ico.
+// trayICO devuelve el icono de un estado de px por px píxeles, en el formato que espera iconHandle.
+// Los ficheros de iconos/ traen el escudo con un margen grande alrededor, y en 16 px quedaba
+// diminuto al lado de los demás iconos de la bandeja. Se parte de la imagen más grande, se recorta
+// el margen transparente y se reduce el escudo para que llene el cuadrado.
 func trayICO(name string, px int) ([]byte, error) {
 	raw, err := trayIcons.ReadFile("iconos/" + name)
 	if err != nil {
@@ -41,13 +43,10 @@ func trayICO(name string, px int) ([]byte, error) {
 		if w == 0 {
 			w = 256
 		}
-		size := int(binary.LittleEndian.Uint32(entry[8:]))
-		off := int(binary.LittleEndian.Uint32(entry[12:]))
-		better := bestW == 0 ||
-			(bestW < px && w > bestW) ||
-			(w >= px && w < bestW)
-		if better {
-			bestW, bestOff, bestSize = w, off, size
+		if w > bestW {
+			bestW = w
+			bestSize = int(binary.LittleEndian.Uint32(entry[8:]))
+			bestOff = int(binary.LittleEndian.Uint32(entry[12:]))
 		}
 	}
 	if bestW == 0 || bestOff+bestSize > len(raw) {
@@ -58,9 +57,124 @@ func trayICO(name string, px int) ([]byte, error) {
 		return nil, err
 	}
 	b := img.Bounds()
-	nrgba := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
-	draw.Draw(nrgba, nrgba.Bounds(), img, b.Min, draw.Src)
-	return encodeICO(nrgba), nil
+	src := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+	draw.Draw(src, src.Bounds(), img, b.Min, draw.Src)
+	return encodeICO(fitToSquare(src, px)), nil
+}
+
+// fitToSquare recorta el margen transparente de src y lo ajusta, centrado y sin deformar,
+// a un cuadrado de px por px con un margen mínimo.
+func fitToSquare(src *image.NRGBA, px int) *image.NRGBA {
+	box := contentBounds(src)
+	out := image.NewNRGBA(image.Rect(0, 0, px, px))
+	margin := 0
+	if px >= 24 {
+		margin = 1
+	}
+	avail := px - 2*margin
+	bw, bh := box.Dx(), box.Dy()
+	if bw <= 0 || bh <= 0 || avail <= 0 {
+		return out
+	}
+	scale := float64(avail) / float64(bw)
+	if s := float64(avail) / float64(bh); s < scale {
+		scale = s
+	}
+	dw := int(float64(bw)*scale + 0.5)
+	dh := int(float64(bh)*scale + 0.5)
+	if dw < 1 {
+		dw = 1
+	}
+	if dh < 1 {
+		dh = 1
+	}
+	offX := (px - dw) / 2
+	offY := (px - dh) / 2
+	for y := 0; y < dh; y++ {
+		for x := 0; x < dw; x++ {
+			// Rectángulo de la imagen original que cae en este píxel (promedio ponderado por la transparencia).
+			x0 := float64(box.Min.X) + float64(x)*float64(bw)/float64(dw)
+			x1 := float64(box.Min.X) + float64(x+1)*float64(bw)/float64(dw)
+			y0 := float64(box.Min.Y) + float64(y)*float64(bh)/float64(dh)
+			y1 := float64(box.Min.Y) + float64(y+1)*float64(bh)/float64(dh)
+			out.SetNRGBA(offX+x, offY+y, areaAverage(src, x0, y0, x1, y1))
+		}
+	}
+	return out
+}
+
+// contentBounds es el rectángulo mínimo que contiene los píxeles con algo de opacidad.
+func contentBounds(img *image.NRGBA) image.Rectangle {
+	b := img.Bounds()
+	minX, minY, maxX, maxY := b.Max.X, b.Max.Y, b.Min.X, b.Min.Y
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			if img.NRGBAAt(x, y).A > 8 {
+				if x < minX {
+					minX = x
+				}
+				if x > maxX {
+					maxX = x
+				}
+				if y < minY {
+					minY = y
+				}
+				if y > maxY {
+					maxY = y
+				}
+			}
+		}
+	}
+	if maxX < minX || maxY < minY {
+		return image.Rectangle{}
+	}
+	return image.Rect(minX, minY, maxX+1, maxY+1)
+}
+
+// areaAverage promedia los píxeles de src dentro de [x0,x1)×[y0,y1), con alfa premultiplicado
+// para que los bordes transparentes no ensucien el color.
+func areaAverage(src *image.NRGBA, x0, y0, x1, y1 float64) color.NRGBA {
+	var r, g, b, a, weight float64
+	for y := int(y0); float64(y) < y1; y++ {
+		wy := overlap(float64(y), float64(y+1), y0, y1)
+		for x := int(x0); float64(x) < x1; x++ {
+			wx := overlap(float64(x), float64(x+1), x0, x1)
+			w := wx * wy
+			if w <= 0 || !image.Pt(x, y).In(src.Bounds()) {
+				continue
+			}
+			c := src.NRGBAAt(x, y)
+			alpha := float64(c.A) / 255
+			r += float64(c.R) * alpha * w
+			g += float64(c.G) * alpha * w
+			b += float64(c.B) * alpha * w
+			a += alpha * w
+			weight += w
+		}
+	}
+	if weight == 0 || a == 0 {
+		return color.NRGBA{}
+	}
+	return color.NRGBA{
+		R: uint8(r/a + 0.5),
+		G: uint8(g/a + 0.5),
+		B: uint8(b/a + 0.5),
+		A: uint8(a/weight*255 + 0.5),
+	}
+}
+
+func overlap(a0, a1, b0, b1 float64) float64 {
+	lo, hi := a0, a1
+	if b0 > lo {
+		lo = b0
+	}
+	if b1 < hi {
+		hi = b1
+	}
+	if hi <= lo {
+		return 0
+	}
+	return hi - lo
 }
 
 func encodeICO(img *image.NRGBA) []byte {
