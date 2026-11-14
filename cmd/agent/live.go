@@ -147,8 +147,8 @@ func (l *liveJob) stop() error {
 	return nil
 }
 
-// enter marca una tarea. Si parent ya es la tarea en curso, solo cambia el rótulo
-// (la verificación que sigue a una copia). Otra tarea distinta se rechaza.
+// enter marca una tarea. Si parent ya es la tarea en curso, solo cambia el rótulo.
+// Otra tarea distinta se rechaza.
 func (l *liveJob) enter(parent context.Context, kind string) (context.Context, func(), bool) {
 	l.mu.Lock()
 	if l.cancel != nil {

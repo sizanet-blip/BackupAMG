@@ -1,4 +1,5 @@
-let borrador = null;
+﻿let borrador = null;
+let retencionManual = false;
 
 function iniciarConfiguracion() {
   iniciarMenu(true);
@@ -53,6 +54,7 @@ async function cargarBorrador(id) {
       return;
     }
     borrador = await respuesta.json();
+    retencionManual = false;
   }
   if (id === "copiar") pintarCopiar();
   if (id === "cuando") pintarCuando();
@@ -249,11 +251,14 @@ function pintarCopiar() {
     (borrador.sources || []).filter((ruta) => !rutas.has(ruta)).forEach((ruta) => {
       const fila = document.createElement("div");
       fila.className = "fila-carpeta";
+      const icono = document.createElement("span");
+      icono.className = "fila-carpeta-icono";
+      icono.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6l2 2h8v9a1 1 0 0 1-1 1H4z"/></svg>';
       const nombre = document.createElement("span");
-      nombre.className = "ruta";
+      nombre.className = "fila-carpeta-ruta";
       nombre.textContent = ruta;
       const peso = document.createElement("span");
-      peso.className = "nota";
+      peso.className = "fila-carpeta-peso";
       peso.textContent = tamanos[ruta] == null ? "…" : tamano(tamanos[ruta]);
       const quitar = document.createElement("button");
       quitar.type = "button";
@@ -263,7 +268,7 @@ function pintarCopiar() {
         borrador.sources = (borrador.sources || []).filter((item) => item !== ruta);
         pintarCopiar();
       });
-      fila.append(nombre, peso, quitar);
+      fila.append(icono, nombre, peso, quitar);
       otras.append(fila);
       pedirTamano(ruta, peso, barra);
     });
@@ -337,37 +342,69 @@ async function abrirCarpeta(caja, ruta) {
 
 function pintarCuando() {
   const raiz = document.getElementById("pantalla-cuando");
-  raiz.innerHTML = "";
+  raiz.replaceChildren();
   const titulo = tituloPagina(textos.menu.cuando, textos.cuandoAyuda);
-  const mas = document.createElement("p");
-  const irRetencion = document.createElement("button");
-  irRetencion.type = "button";
-  irRetencion.className = "enlace";
-  irRetencion.textContent = textos.menu.retencion;
-  irRetencion.addEventListener("click", () => mostrarPantalla("retencion"));
-  const irVerificar = document.createElement("button");
-  irVerificar.type = "button";
-  irVerificar.className = "enlace";
-  irVerificar.textContent = textos.menu.verificar;
-  irVerificar.addEventListener("click", () => mostrarPantalla("verificar"));
-  mas.append(irRetencion, document.createTextNode(" · "), irVerificar);
-  const horas = document.createElement("div");
-  horas.className = "horas";
+  const atajos = document.createElement("div");
+  atajos.className = "accesos-ajuste";
+  atajos.append(
+    accesoAjuste(textos.menu.retencion, textos.accesoRetencion, () => mostrarPantalla("retencion")),
+    accesoAjuste(textos.menu.verificar, textos.accesoVerificar, () => mostrarPantalla("verificar"))
+  );
+
+  const dias = document.createElement("article");
+  dias.className = "bloque";
+  const hDias = document.createElement("h2");
+  hDias.textContent = textos.diasTitulo;
+  const rejilla = document.createElement("div");
+  rejilla.className = "dias-semana";
+  textos.dias.forEach((nombre, indice) => {
+    const boton = document.createElement("button");
+    boton.type = "button";
+    boton.className = "dia";
+    boton.textContent = textos.diasCortos[indice];
+    boton.setAttribute("aria-label", nombre);
+    const dia = indice + 1;
+    const activo = (borrador.weekdays || []).includes(dia);
+    boton.classList.toggle("activo", activo);
+    boton.setAttribute("aria-pressed", activo ? "true" : "false");
+    boton.addEventListener("click", () => {
+      const lista = new Set(borrador.weekdays || []);
+      if (lista.has(dia)) lista.delete(dia);
+      else lista.add(dia);
+      borrador.weekdays = Array.from(lista).sort((a, b) => a - b);
+      pintarCuando();
+    });
+    rejilla.append(boton);
+  });
+  dias.append(hDias, rejilla);
+
+  const horasBloque = document.createElement("article");
+  horasBloque.className = "bloque";
+  const hHoras = document.createElement("h2");
+  hHoras.textContent = textos.horas;
+  const lista = document.createElement("div");
+  lista.className = "lista";
   (borrador.times || []).forEach((hora, indice) => {
+    const fila = document.createElement("div");
+    fila.className = "fila-hora";
+    const icono = document.createElement("span");
+    icono.className = "fila-carpeta-icono";
+    icono.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v5l3 2"/></svg>';
     const campo = document.createElement("input");
-    campo.type = "text";
-    campo.value = hora;
-    campo.className = "campo";
-    campo.addEventListener("change", () => { borrador.times[indice] = campo.value.trim(); });
+    campo.type = "time";
+    campo.step = "60";
+    campo.value = horaVisible(hora);
+    campo.addEventListener("change", () => { borrador.times[indice] = horaVisible(campo.value); });
     const quitar = document.createElement("button");
     quitar.type = "button";
-    quitar.className = "secundario";
+    quitar.className = "enlace";
     quitar.textContent = textos.quitar;
     quitar.addEventListener("click", () => {
       borrador.times.splice(indice, 1);
       pintarCuando();
     });
-    horas.append(campo, quitar);
+    fila.append(icono, campo, quitar);
+    lista.append(fila);
   });
   const anadir = document.createElement("button");
   anadir.type = "button";
@@ -378,85 +415,140 @@ function pintarCuando() {
     borrador.times.push("12:00");
     pintarCuando();
   });
-  const etiqHoras = document.createElement("p");
-  etiqHoras.textContent = textos.horas;
-  raiz.append(titulo, mas, etiqHoras, horas, anadir);
-  textos.dias.forEach((nombre, indice) => {
-    const etiqueta = document.createElement("label");
-    const caja = document.createElement("input");
-    caja.type = "checkbox";
-    const dia = indice + 1;
-    caja.checked = (borrador.weekdays || []).includes(dia);
-    caja.addEventListener("change", () => {
-      const dias = new Set(borrador.weekdays || []);
-      if (caja.checked) dias.add(dia);
-      else dias.delete(dia);
-      borrador.weekdays = Array.from(dias).sort((a, b) => a - b);
-    });
-    etiqueta.append(caja, document.createTextNode(nombre));
-    raiz.appendChild(etiqueta);
-  });
-  raiz.append(
-    interruptor(textos.alArrancar, borrador.run_missed_on_startup, (valor) => { borrador.run_missed_on_startup = valor; }),
+  horasBloque.append(hHoras, lista, anadir);
+
+  const fallos = document.createElement("article");
+  fallos.className = "bloque";
+  const hFallos = document.createElement("h2");
+  hFallos.textContent = textos.siNoTermina;
+  const cifras = document.createElement("div");
+  cifras.className = "cifras-ajuste";
+  cifras.append(
     numero(textos.reintentos, borrador.max_retries, (valor) => { borrador.max_retries = valor; }),
     numero(textos.espera, borrador.retry_delay_minutes, (valor) => { borrador.retry_delay_minutes = valor; }),
-    numero(textos.diasRojo, borrador.stale_after_days, (valor) => { borrador.stale_after_days = valor; }),
-    barraGuardar("cuando", textos.menu.cuando)
+    numero(textos.diasRojo, borrador.stale_after_days, (valor) => { borrador.stale_after_days = valor; })
   );
+  fallos.append(
+    hFallos,
+    filaOpcion(textos.alArrancar, borrador.run_missed_on_startup, (valor) => { borrador.run_missed_on_startup = valor; }),
+    cifras
+  );
+
   const aviso = document.createElement("p");
   aviso.className = "resultado";
   aviso.hidden = true;
-  raiz.appendChild(aviso);
+  raiz.append(titulo, atajos, dias, horasBloque, fallos, barraGuardar("cuando", textos.menu.cuando), aviso);
+}
+
+function botonVolver() {
+  const boton = document.createElement("button");
+  boton.type = "button";
+  boton.className = "volver";
+  boton.textContent = textos.volver;
+  boton.addEventListener("click", () => mostrarPantalla("cuando"));
+  return boton;
+}
+
+function accesoAjuste(titulo, ayuda, alPulsar) {
+  const boton = document.createElement("button");
+  boton.type = "button";
+  boton.className = "acceso";
+  const nombre = document.createElement("strong");
+  nombre.textContent = titulo;
+  const nota = document.createElement("span");
+  nota.textContent = ayuda;
+  boton.append(nombre, nota);
+  boton.addEventListener("click", alPulsar);
+  return boton;
+}
+
+function horaVisible(valor) {
+  const partes = String(valor || "").trim().split(":");
+  if (partes.length < 2) return "12:00";
+  const hora = partes[0].padStart(2, "0").slice(-2);
+  const minuto = partes[1].padStart(2, "0").slice(0, 2);
+  if (!/^\d{2}$/.test(hora) || !/^\d{2}$/.test(minuto)) return "12:00";
+  return hora + ":" + minuto;
+}
+
+function filaOpcion(etiqueta, valor, alCambiar) {
+  const campo = document.createElement("label");
+  campo.className = "opcion";
+  const texto = document.createElement("span");
+  texto.textContent = etiqueta;
+  const caja = document.createElement("input");
+  caja.type = "checkbox";
+  caja.checked = !!valor;
+  caja.addEventListener("change", () => alCambiar(caja.checked));
+  const pista = document.createElement("span");
+  pista.className = "pista";
+  pista.setAttribute("aria-hidden", "true");
+  campo.append(texto, caja, pista);
+  return campo;
 }
 
 function pintarRetencion() {
   const raiz = document.getElementById("pantalla-retencion");
-  raiz.innerHTML = "";
-  const titulo = document.createElement("h2");
-  titulo.textContent = textos.menu.retencion;
-  const explicacion = document.createElement("p");
-  raiz.append(titulo, explicacion);
-  const nombres = ["basica", "recomendada", "larga", "avanzada"];
+  raiz.replaceChildren();
+  const titulo = tituloPagina(textos.menu.retencion, textos.retencionAyuda);
+  titulo.prepend(botonVolver());
+  const opciones = document.createElement("article");
+  opciones.className = "bloque";
+  const rejilla = document.createElement("div");
+  rejilla.className = "presets";
   const actual = presetActual();
-  nombres.forEach((nombre) => {
-    const etiqueta = document.createElement("label");
-    const radio = document.createElement("input");
-    radio.type = "radio";
-    radio.name = "preset";
-    radio.checked = nombre === actual;
-    radio.addEventListener("change", () => {
+  ["basica", "recomendada", "larga", "avanzada"].forEach((nombre) => {
+    const boton = document.createElement("button");
+    boton.type = "button";
+    boton.className = "preset";
+    boton.classList.toggle("activo", nombre === actual);
+    boton.setAttribute("aria-pressed", nombre === actual ? "true" : "false");
+    const nombreNodo = document.createElement("strong");
+    nombreNodo.textContent = textos.presetNombres[nombre];
+    const nota = document.createElement("span");
+    nota.textContent = nombre === "avanzada" ? textos.avanzada : textos.presets[nombre].texto;
+    boton.append(nombreNodo, nota);
+    boton.addEventListener("click", () => {
       if (nombre === "avanzada") {
-        explicacion.textContent = textos.avanzada;
-        return;
+        retencionManual = true;
+      } else {
+        retencionManual = false;
+        const preset = textos.presets[nombre];
+        borrador.keep_daily = preset.daily;
+        borrador.keep_weekly = preset.weekly;
+        borrador.keep_monthly = preset.monthly;
+        borrador.keep_yearly = preset.yearly;
       }
-      const preset = textos.presets[nombre];
-      borrador.keep_daily = preset.daily;
-      borrador.keep_weekly = preset.weekly;
-      borrador.keep_monthly = preset.monthly;
-      borrador.keep_yearly = preset.yearly;
-      explicacion.textContent = preset.texto;
       pintarRetencion();
     });
-    etiqueta.append(radio, document.createTextNode(textos.presetNombres[nombre]));
-    raiz.appendChild(etiqueta);
+    rejilla.append(boton);
   });
-  explicacion.textContent = actual === "avanzada" ? textos.avanzada : textos.presets[actual].texto;
+  opciones.append(rejilla);
+
   const avanzada = actual === "avanzada";
-  raiz.append(
+  const cifrasBloque = document.createElement("article");
+  cifrasBloque.className = "bloque";
+  const cifras = document.createElement("div");
+  cifras.className = "cifras-ajuste cuatro";
+  cifras.append(
     numero(textos.diaria, borrador.keep_daily, (valor) => { borrador.keep_daily = valor; }, !avanzada),
     numero(textos.semanal, borrador.keep_weekly, (valor) => { borrador.keep_weekly = valor; }, !avanzada),
     numero(textos.mensual, borrador.keep_monthly, (valor) => { borrador.keep_monthly = valor; }, !avanzada),
-    numero(textos.anual, borrador.keep_yearly, (valor) => { borrador.keep_yearly = valor; }, !avanzada),
-    interruptor(textos.liberar, borrador.prune, (valor) => { borrador.prune = valor; }),
-    barraGuardar("retencion", textos.menu.retencion)
+    numero(textos.anual, borrador.keep_yearly, (valor) => { borrador.keep_yearly = valor; }, !avanzada)
   );
+  cifrasBloque.append(
+    cifras,
+    filaOpcion(textos.liberar, borrador.prune, (valor) => { borrador.prune = valor; })
+  );
+
   const aviso = document.createElement("p");
   aviso.className = "resultado";
   aviso.hidden = true;
-  raiz.appendChild(aviso);
+  raiz.append(titulo, opciones, cifrasBloque, barraGuardar("retencion", textos.menu.retencion), aviso);
 }
 
 function presetActual() {
+  if (retencionManual) return "avanzada";
   const nombres = ["basica", "recomendada", "larga"];
   for (const nombre of nombres) {
     const preset = textos.presets[nombre];
@@ -469,22 +561,27 @@ function presetActual() {
 
 function pintarVerificar() {
   const raiz = document.getElementById("pantalla-verificar");
-  raiz.innerHTML = "";
-  const titulo = document.createElement("h2");
-  titulo.textContent = textos.menu.verificar;
+  raiz.replaceChildren();
+  const titulo = tituloPagina(textos.menu.verificar, textos.verificarAyuda);
+  titulo.prepend(botonVolver());
+  const bloque = document.createElement("article");
+  bloque.className = "bloque";
+  const cifras = document.createElement("div");
+  cifras.className = "cifras-ajuste dos";
+  const porcion = textoCampo(textos.porcion, borrador.read_data_subset, (valor) => { borrador.read_data_subset = valor; });
   const ayuda = document.createElement("p");
+  ayuda.className = "nota";
   ayuda.textContent = textos.porcionAyuda;
-  raiz.append(
-    titulo,
+  porcion.append(ayuda);
+  cifras.append(
     numero(textos.cada, borrador.every_days, (valor) => { borrador.every_days = valor; }),
-    textoCampo(textos.porcion, borrador.read_data_subset, (valor) => { borrador.read_data_subset = valor; }),
-    ayuda,
-    barraGuardar("verificar", textos.menu.verificar)
+    porcion
   );
+  bloque.append(cifras);
   const aviso = document.createElement("p");
   aviso.className = "resultado";
   aviso.hidden = true;
-  raiz.appendChild(aviso);
+  raiz.append(titulo, bloque, barraGuardar("verificar", textos.menu.verificar), aviso);
 }
 
 function numero(etiqueta, valor, alCambiar, bloqueado) {

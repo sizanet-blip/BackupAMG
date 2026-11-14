@@ -19,18 +19,21 @@ import (
 )
 
 var (
-	user32               = windows.NewLazySystemDLL("user32.dll")
-	enumWindows          = user32.NewProc("EnumWindows")
-	getWindowTextW       = user32.NewProc("GetWindowTextW")
-	getWindowTextLengthW = user32.NewProc("GetWindowTextLengthW")
-	isWindowVisible      = user32.NewProc("IsWindowVisible")
-	isWindow             = user32.NewProc("IsWindow")
-	getWindow            = user32.NewProc("GetWindow")
-	showWindow           = user32.NewProc("ShowWindow")
-	setForegroundWindow  = user32.NewProc("SetForegroundWindow")
-	bringWindowToTop     = user32.NewProc("BringWindowToTop")
-	getWindowThreadProc  = user32.NewProc("GetWindowThreadProcessId")
-	allowSetForeground   = user32.NewProc("AllowSetForegroundWindow")
+	user32                    = windows.NewLazySystemDLL("user32.dll")
+	ntdll                     = windows.NewLazySystemDLL("ntdll.dll")
+	ntQueryInformationProcess = ntdll.NewProc("NtQueryInformationProcess")
+	enumWindows               = user32.NewProc("EnumWindows")
+	getWindowTextW            = user32.NewProc("GetWindowTextW")
+	getWindowTextLengthW      = user32.NewProc("GetWindowTextLengthW")
+	isWindowVisible           = user32.NewProc("IsWindowVisible")
+	isWindow                  = user32.NewProc("IsWindow")
+	getWindow                 = user32.NewProc("GetWindow")
+	showWindow                = user32.NewProc("ShowWindow")
+	setForegroundWindow       = user32.NewProc("SetForegroundWindow")
+	bringWindowToTop          = user32.NewProc("BringWindowToTop")
+	getWindowThreadProc       = user32.NewProc("GetWindowThreadProcessId")
+	allowSetForeground        = user32.NewProc("AllowSetForegroundWindow")
+	postMessage               = user32.NewProc("PostMessageW")
 )
 
 const (
@@ -63,6 +66,7 @@ var (
 	enumMu              sync.Mutex
 	enumFindState       struct {
 		found uintptr
+		all   []uintptr
 	}
 )
 
@@ -72,9 +76,6 @@ func OpenURL(url string) error {
 	if url == "" {
 		return fmt.Errorf("la dirección del panel está vacía")
 	}
-	if FocusPanelWindow() {
-		return nil
-	}
 	browser, err := findDefaultBrowserExe()
 	if err != nil {
 		return err
@@ -83,6 +84,9 @@ func OpenURL(url string) error {
 	if err != nil {
 		return err
 	}
+	// La ventana del enlace caducado sigue abierta y no tiene sesión.
+	// Cerrarla antes evita dejar esa página delante y abrir otra detrás.
+	closePanelWindows()
 	cmd := exec.Command(browser,
 		"--user-data-dir="+profile,
 		"--app="+url,
@@ -219,17 +223,12 @@ func firstQuotedPath(cmd string) string {
 
 func ensureEnumCallbacks() {
 	enumCbOnce.Do(func() {
-		enumPanelCb = syscall.NewCallback(func(hwnd, _ uintptr) uintptr {
-			if !visibleTopLevel(hwnd) {
+		enumPanelCb = syscall.NewCallback(func(hwnd, lParam uintptr) uintptr {
+			if !isPanelBrowserWindow(hwnd) {
 				return 1
 			}
-			title := windowTitle(hwnd)
-			if !strings.HasPrefix(title, panelTitle) {
-				return 1
-			}
-			var pid uint32
-			getWindowThreadProc.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
-			if !isBrowserProcess(pid) {
+			if lParam == 1 {
+				enumFindState.all = append(enumFindState.all, hwnd)
 				return 1
 			}
 			enumFindState.found = hwnd
@@ -245,6 +244,80 @@ func findPanelBrowserWindow() uintptr {
 	enumFindState.found = 0
 	enumWindows.Call(enumPanelCb, 0)
 	return enumFindState.found
+}
+
+func panelWindowHandles() []uintptr {
+	ensureEnumCallbacks()
+	enumMu.Lock()
+	defer enumMu.Unlock()
+	enumFindState.all = nil
+	enumWindows.Call(enumPanelCb, 1)
+	return append([]uintptr(nil), enumFindState.all...)
+}
+
+func isPanelBrowserWindow(hwnd uintptr) bool {
+	if !visibleTopLevel(hwnd) {
+		return false
+	}
+	var pid uint32
+	getWindowThreadProc.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
+	if !isBrowserProcess(pid) {
+		return false
+	}
+	if isPanelAppProcess(pid) {
+		return true
+	}
+	title := windowTitle(hwnd)
+	return strings.HasPrefix(title, panelTitle) || strings.Contains(title, "127.0.0.1:47800") || strings.Contains(title, "localhost:47800") || strings.Contains(title, "caducado")
+}
+
+func isPanelAppProcess(pid uint32) bool {
+	line := strings.ToLower(processCommandLine(pid))
+	return strings.Contains(line, `backupamg\panel-app`) && strings.Contains(line, "--app=") && !strings.Contains(line, "--type=")
+}
+
+func processCommandLine(pid uint32) string {
+	const processQueryLimitedInformation = 0x1000
+	const processCommandLineInformation = 60
+	h, err := windows.OpenProcess(processQueryLimitedInformation, false, pid)
+	if err != nil {
+		return ""
+	}
+	defer windows.CloseHandle(h)
+	buf := make([]byte, 32768)
+	status, _, _ := ntQueryInformationProcess.Call(uintptr(h), processCommandLineInformation, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)), 0)
+	if status != 0 {
+		return ""
+	}
+	type unicodeString struct {
+		Length        uint16
+		MaximumLength uint16
+		Buffer        uintptr
+	}
+	u := (*unicodeString)(unsafe.Pointer(&buf[0]))
+	if u.Length < 2 || u.Buffer == 0 {
+		return ""
+	}
+	n := int(u.Length / 2)
+	raw := unsafe.Slice((*uint16)(unsafe.Pointer(u.Buffer)), n)
+	chars := make([]uint16, n+1)
+	copy(chars, raw)
+	return windows.UTF16ToString(chars)
+}
+
+func closePanelWindows() {
+	const wmClose = 0x0010
+	for _, hwnd := range panelWindowHandles() {
+		postMessage.Call(hwnd, wmClose, 0, 0)
+	}
+	rememberedPanelHWND.Store(0)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(panelWindowHandles()) == 0 {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 func visibleTopLevel(hwnd uintptr) bool {

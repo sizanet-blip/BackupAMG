@@ -143,19 +143,6 @@ func oneAttempt(ctx context.Context, logger *logging.Logger, cfg *config.Config,
 		}
 	}
 
-	if runErr == nil {
-		if due, err := verificationDue(cfg, time.Now()); err != nil {
-			logger.Error("No se pudo saber si toca verificar", "error", err.Error())
-		} else if due {
-			if err := executeVerification(ctx, logger.Logger, cfg, password, exe, trigger); err != nil {
-				logger.Error("La verificación no se ha completado", "error", err.Error())
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			}
-		} else {
-			logger.Info("La verificación periódica no toca todavía", "every_days", cfg.Verify.EveryDays)
-		}
-	}
-
 	if runErr != nil {
 		logger.Error("La copia no se ha realizado", "error", runErr.Error())
 		fmt.Fprintf(os.Stderr, "Error: %v\n", runErr)

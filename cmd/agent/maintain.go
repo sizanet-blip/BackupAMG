@@ -56,13 +56,14 @@ func startPanel(ctx context.Context, logger *logging.Logger, port int) {
 
 func openPanel() int {
 	reused, url, user, role, err := panel.RequestShow("")
-	if system.FocusBrowserForPanel() || reused {
-		fmt.Fprintln(os.Stderr, "El panel ya estaba abierto; se ha traído al frente.")
-		return 0
-	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
+	}
+	if reused {
+		system.FocusBrowserForPanel()
+		fmt.Fprintln(os.Stderr, "El panel ya estaba abierto; se ha traído al frente.")
+		return 0
 	}
 	if url == "" {
 		return 0

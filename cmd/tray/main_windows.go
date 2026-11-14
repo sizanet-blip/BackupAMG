@@ -47,13 +47,15 @@ func openPanel(next string) {
 	}
 	defer openPanelBusy.Store(false)
 
-	// Navegar por SSE si la ventana-app del panel sigue viva.
-	_, url, _, _, err := panel.RequestShow(next)
-	if system.FocusPanelWindow() {
-		return
-	}
+	// Solo enfocar si hay una sesión viva. Una ventana con el enlace caducado
+	// no tiene sesión: hay que abrir otro enlace, no volver a traer esa página.
+	reused, url, _, _, err := panel.RequestShow(next)
 	if err != nil {
 		pushToast("No se pudo abrir el panel", "El agente no está en marcha.")
+		return
+	}
+	if reused {
+		system.FocusPanelWindow()
 		return
 	}
 	// Sin ventana a la vista: abrir (o reactivar) la ventana-app dedicada.

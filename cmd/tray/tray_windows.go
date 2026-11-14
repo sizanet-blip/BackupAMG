@@ -54,6 +54,8 @@ type trayApp struct {
 	toastBody    string
 	toastReady   bool
 	lastToggle   time.Time
+	iconRC       rect
+	iconRCOK     bool
 }
 
 var activeTray *trayApp
@@ -207,6 +209,7 @@ func (t *trayApp) notifyIcon() {
 // mezclarlo con el timer del popup colgaba el icono.
 func (t *trayApp) refreshBackground() {
 	view, err := requestStatus()
+	t.cacheIconRect()
 	t.mu.Lock()
 	t.pendingView = view
 	t.pendingErr = err
@@ -370,7 +373,26 @@ func (t *trayApp) showPopup() {
 	}
 }
 
+// iconRect lee la posición guardada. No llama a la bandeja: hacerlo en el hilo
+// de UI dejaba el icono pillado al abrir el panel.
 func (t *trayApp) iconRect() (rect, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.iconRCOK {
+		return rect{}, false
+	}
+	return t.iconRC, true
+}
+
+func (t *trayApp) cacheIconRect() {
+	rc, ok := t.queryIconRect()
+	t.mu.Lock()
+	t.iconRC = rc
+	t.iconRCOK = ok
+	t.mu.Unlock()
+}
+
+func (t *trayApp) queryIconRect() (rect, bool) {
 	t.mu.Lock()
 	nid := t.nid
 	t.mu.Unlock()
