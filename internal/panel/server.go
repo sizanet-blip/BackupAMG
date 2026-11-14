@@ -875,12 +875,14 @@ func (s *Server) handleSize(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"bytes": total, "complete": complete})
 }
 
-func (s *Server) pipeResult(user string, role Role, op string) any {
+func (s *Server) pipeResult(user string, role Role, op, screen string) any {
 	switch op {
 	case "token":
 		token := s.IssueToken(user, role)
 		s.log.Info("Token del panel emitido", "user", user, "role", role)
 		return map[string]any{"ok": true, "url": s.LoginURL(token), "user": user, "role": role}
+	case "show":
+		return s.pipeShow(user, role, screen)
 	case "status":
 		s.mu.Lock()
 		fn := s.hooks.Status
@@ -900,6 +902,34 @@ func (s *Server) pipeResult(user string, role Role, op string) any {
 	default:
 		return map[string]any{"ok": false, "error": "Petición no reconocida."}
 	}
+}
+
+func (s *Server) pipeShow(user string, role Role, screen string) any {
+	screen = strings.TrimSpace(screen)
+	switch screen {
+	case "", "historial", "restaurar", "ajustes", "copiar", "inicio":
+	default:
+		return map[string]any{"ok": false, "error": "Pantalla no reconocida."}
+	}
+	s.mu.Lock()
+	liveSSE := len(s.subs) > 0
+	s.mu.Unlock()
+	if liveSSE && screen != "" && screen != "inicio" {
+		raw, _ := json.Marshal(map[string]string{"navigate": screen})
+		s.broadcast(raw)
+	}
+	// Solo reutilizar si hay un cliente SSE real (pestaña viva).
+	// Una sesión huérfana sin navegador hacía que la bandeja no abriera nada.
+	if liveSSE {
+		return map[string]any{"ok": true, "reused": true, "user": user, "role": role}
+	}
+	token := s.IssueToken(user, role)
+	s.log.Info("Token del panel emitido", "user", user, "role", role)
+	url := s.LoginURL(token)
+	if screen == "historial" || screen == "restaurar" || screen == "ajustes" || screen == "copiar" {
+		url += "&next=" + screen
+	}
+	return map[string]any{"ok": true, "reused": false, "url": url, "user": user, "role": role}
 }
 
 func (s *Server) handleAdminProbe(w http.ResponseWriter, r *http.Request) {

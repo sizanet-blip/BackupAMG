@@ -1,4 +1,4 @@
-﻿let borrador = null;
+let borrador = null;
 
 function iniciarConfiguracion() {
   iniciarMenu(true);
@@ -180,6 +180,7 @@ function pintarCopiar() {
   ayudaNo.textContent = textos.noCopiarAyuda;
   noCaja.append(tituloNo, ayudaNo);
   const reglas = document.createElement("div");
+  reglas.className = "plantillas";
   const personal = document.createElement("textarea");
   personal.rows = 4;
   personal.hidden = true;

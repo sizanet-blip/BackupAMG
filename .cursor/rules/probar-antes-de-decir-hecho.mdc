@@ -1,0 +1,12 @@
+---
+description: Probar siempre en runtime antes de decir que algo funciona
+alwaysApply: true
+---
+
+# Probar antes de decir que está hecho
+
+- Nunca digas que un arreglo del tray, panel, agente o instalador "está listo" solo porque compila.
+- Tras cada cambio de comportamiento, reinicia el binario afectado y verifica tú el síntoma concreto (clic del icono, popup visible, una sola pestaña del panel, etc.).
+- Si no puedes reproducir la acción a mano, automatiza la comprobación (PostMessage, IsWindowVisible, IsHungAppWindow, pipe, etc.) y exige resultado OK.
+- Si la verificación falla, no informes éxito: sigue diagnosticando.
+- En el tray: el hilo de UI no debe hacer I/O de pipe ni Win32 de foco con AttachThreadInput desde goroutines.

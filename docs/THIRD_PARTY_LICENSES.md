@@ -59,6 +59,3 @@ freely, subject to the following restrictions:
    distribution.
 ```
 
-## fyne.io/systray v1.11.0
-
-El icono de la bandeja usa esta librería. Es de Fyne.io y sus colaboradores, y se distribuye bajo la licencia Apache 2.0.

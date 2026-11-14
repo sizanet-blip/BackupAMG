@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -81,7 +82,11 @@ func executeVerification(ctx context.Context, logger *slog.Logger, cfg *config.C
 		in.ResticVersion = version
 		in.Message = result.Message
 		if result.Status != restic.StatusSuccess {
-			in.Errors = []string{result.Message}
+			raw := strings.TrimSpace(result.Raw)
+			if raw == "" {
+				raw = result.Message
+			}
+			in.Errors = []string{raw}
 		}
 	}
 	rep := report.Build(in)

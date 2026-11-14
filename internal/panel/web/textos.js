@@ -187,6 +187,8 @@ const textos = {
   verificacionAvisos: "La comprobación terminó con avisos",
   verificacionMal: "La comprobación no se completó",
   verificacionNunca: "Todavía no se han comprobado",
+  verInformacion: "Ver información",
+  ocultarInformacion: "Ocultar información",
   sinErrores: "Sin errores",
   conAvisos: "Con avisos",
   omitidos: "Ficheros que no se pudieron leer",

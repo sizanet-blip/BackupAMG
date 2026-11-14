@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"backup-agent/internal/restic"
 )
 
 // Summary es una línea del historial, sin el detalle.
@@ -118,7 +120,7 @@ func List(dir string, filter Filter) ([]Summary, error) {
 			DurationSeconds: rep.DurationSeconds,
 			DataAddedBytes:  rep.DataAddedBytes,
 			Skipped:         len(rep.SkippedFiles),
-			Message:         rep.Message,
+			Message:         restic.PlainFailure(rep.Message),
 		})
 	}
 	sort.Slice(items, func(i, j int) bool {

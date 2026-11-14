@@ -47,6 +47,7 @@ type Run struct {
 	DurationSeconds int    `json:"duration_seconds"`
 	DataAddedBytes  int64  `json:"data_added_bytes"`
 	Message         string `json:"message,omitempty"`
+	Detail          string `json:"detail,omitempty"`
 }
 
 // Destination es el repositorio y el espacio del disco.

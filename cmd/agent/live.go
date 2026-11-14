@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -398,14 +399,22 @@ func fillReport(name string, run *status.Run) {
 		return
 	}
 	var extra struct {
-		DurationSeconds int    `json:"duration_seconds"`
-		DataAddedBytes  int64  `json:"data_added_bytes"`
-		Message         string `json:"message"`
+		DurationSeconds int      `json:"duration_seconds"`
+		DataAddedBytes  int64    `json:"data_added_bytes"`
+		Message         string   `json:"message"`
+		Errors          []string `json:"errors"`
 	}
 	if json.Unmarshal(data, &extra) != nil {
 		return
 	}
 	run.DurationSeconds = extra.DurationSeconds
 	run.DataAddedBytes = extra.DataAddedBytes
-	run.Message = extra.Message
+	run.Message = restic.PlainFailure(extra.Message)
+	raw := strings.TrimSpace(extra.Message)
+	if len(extra.Errors) > 0 && strings.TrimSpace(extra.Errors[0]) != "" {
+		raw = strings.TrimSpace(extra.Errors[0])
+	}
+	if raw != "" && raw != run.Message {
+		run.Detail = raw
+	}
 }

@@ -257,6 +257,7 @@ function pintarAsistente(info) {
     const explorar = document.createElement("div");
     explorar.className = "lista";
     const exclusiones = document.createElement("div");
+    exclusiones.className = "plantillas";
     textos.plantillas.forEach((plantilla) => {
       const etiqueta = document.createElement("label");
       const caja = document.createElement("input");

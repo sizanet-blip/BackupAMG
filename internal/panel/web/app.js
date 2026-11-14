@@ -247,17 +247,33 @@ function quedaEnFrase(segundos) {
 
 function pintarVerificacion(run) {
   const estado = document.getElementById("verificacion-estado");
+  const boton = document.getElementById("verificacion-real");
+  const detalle = document.getElementById("verificacion-detalle");
+  const real = run && run.detail && run.detail !== run.message ? run.detail : "";
+  const abierto = real !== "" && !detalle.hidden && detalle.textContent === real;
+  boton.hidden = real === "";
+  detalle.hidden = !abierto;
+  detalle.textContent = real;
+  boton.textContent = abierto ? textos.ocultarInformacion : textos.verInformacion;
+  boton.onclick = () => {
+    detalle.hidden = !detalle.hidden;
+    boton.textContent = detalle.hidden ? textos.verInformacion : textos.ocultarInformacion;
+  };
   if (!run || !run.finished_at) {
     texto("verificacion", textos.verificacionNunca);
     texto("verificacion-cuando", "");
     estado.textContent = "";
     estado.className = "punto";
+    boton.hidden = true;
+    detalle.hidden = true;
     return;
   }
   if (run.status === "success") {
     texto("verificacion", textos.verificacionBien);
     estado.textContent = textos.sinErrores;
     estado.className = "punto ok";
+    boton.hidden = true;
+    detalle.hidden = true;
   } else if (run.status === "warning") {
     texto("verificacion", textos.verificacionAvisos);
     estado.textContent = textos.conAvisos;
@@ -377,8 +393,23 @@ async function cargar() {
 
   const fuente = new EventSource("/api/v1/events");
   fuente.onmessage = (evento) => {
-    try { pintar(JSON.parse(evento.data)); } catch (e) { /* un aviso suelto no pinta el estado */ }
+    try {
+      const data = JSON.parse(evento.data);
+      if (data && data.navigate) {
+        if (typeof mostrarPantalla === "function") mostrarPantalla(data.navigate);
+        try { window.focus(); } catch (e) { /* el navegador puede bloquear el foco */ }
+        if (document.hidden && typeof Notification === "function" && Notification.permission === "granted") {
+          const aviso = new Notification("BackupAMG", { body: "El panel se ha actualizado. Pulsa para verlo.", tag: "backupamg-panel" });
+          aviso.onclick = () => { try { window.focus(); } catch (e) {} aviso.close(); };
+        }
+        return;
+      }
+      pintar(data);
+    } catch (e) { /* un aviso suelto no pinta el estado */ }
   };
+  if (typeof Notification === "function" && Notification.permission === "default") {
+    try { Notification.requestPermission(); } catch (e) { /* opcional */ }
+  }
 }
 
 cargar();

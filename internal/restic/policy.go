@@ -120,6 +120,7 @@ type CheckResult struct {
 	ExitCode   int
 	NumErrors  int
 	Message    string
+	Raw        string
 	RawSummary string
 }
 
@@ -141,14 +142,16 @@ func Check(ctx context.Context, exe, repo, password, subset string) (CheckResult
 		return result, nil
 	}
 	result.Status = StatusFailed
-	result.Message = "La verificación ha encontrado errores en el repositorio"
-	if numErrors > 0 {
-		result.Message = fmt.Sprintf("%s (%d)", result.Message, numErrors)
-	}
-	if detail := strings.TrimSpace(stderr); detail != "" && code != 0 {
-		result.Message += ": " + cleanResticMessage(detail)
-	}
+	result.Raw = strings.TrimSpace(stderr)
+	result.Message = checkFailure(result.Raw, numErrors)
 	return result, nil
+}
+
+func checkFailure(stderr string, numErrors int) string {
+	if plain := failureSituation(stderr, numErrors); plain != "" {
+		return plain
+	}
+	return "No se ha podido completar."
 }
 
 func parseCheck(stdout string) (int, string) {
