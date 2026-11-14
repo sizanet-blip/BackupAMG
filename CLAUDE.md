@@ -7,9 +7,12 @@ Idioma: hablar con el usuario en **español**, en lenguaje claro. El usuario no 
 ## Estado actual
 
 - Agente versión **0.1.0**, implementado según `docs/especificaciones/ESPECIFICACION_AGENTE.md` y `docs/especificaciones/ESPECIFICACION_INTERFAZ.md`.
-- En curso: **rediseño visual** del panel y del icono de bandeja según `docs/especificaciones/ESPECIFICACION_DISENO.md`.
-- Rama de trabajo actual: `feature/...` (consultar `git branch`). No hacer commit ni push salvo que el usuario lo pida.
-- Pendiente: pruebas reales (ver más abajo), uso piloto y, después, la plataforma web.
+- **Rediseño visual** (`docs/especificaciones/ESPECIFICACION_DISENO.md`): aplicado en casi todo el panel (nov 2026). Hecho: tokens y componentes propios (casillas, interruptores, fechas), fuente Inter y iconos Lucide embebidos, plantilla común de pantallas, selector de carpetas tipo explorador (`crearExplorador` en `config.js`, que no se cierra al añadir), Restaurar con el mismo estilo, asistente de 5 pasos, confirmaciones y avisos propios, paginación del historial, pestañas Horario/Retención/Verificación, logotipo (`assets/branding`) en `agent.exe`, `tray.exe`, instalador y panel, iconos de bandeja por estado y menú de bandeja con «Ocultar el icono».
+- **Cambios de Go ligados al rediseño** (compatibles, sin tocar formato de informes): `GET /api/v1/folders` devuelve `label`, `free_bytes` y `total_bytes` por unidad; historial con `limit`/`offset` y cabecera `X-Total-Count`; al cambiar el destino, `saveDestination` prepara la carpeta nueva antes de tocar la configuración; la verificación periódica vuelve a lanzarla el planificador (`verifyIfDue`, `cmd/agent/verify.go`), al arrancar y tras cada copia correcta o con avisos.
+- **Sin comprobar en un equipo real**: el icono y el menú reales de la bandeja, los avisos de Windows, «Ocultar el icono», el instalador recompilado (`dist\BackupAgent-Setup.exe` no se ha regenerado tras el rediseño) y los estados rojo y amarillo de Inicio. Falta además la revisión final de modo oscuro, ventana estrecha y teclado en todas las pantallas.
+- Rama de trabajo: la `feature/...` abierta (consultar `git branch`). No hacer commit ni push salvo que el usuario lo pida.
+- Pruebas del panel: `probar-panel.cmd` (agente de prueba en `bin\dev`, puerto 47811 y datos en `%TEMP%\backupamg-dev`, sin tocar el agente real) y `probar-bandeja.cmd` (icono de bandeja).
+- Pendiente: pruebas reales (ver más abajo), uso piloto y, después, la plataforma web. Idea futura ya especificada: varios destinos de copia, `docs/especificaciones/ESPECIFICACION_MULTIDESTINO.md` (borrador, no empezar sin confirmar).
 
 ## Arquitectura
 

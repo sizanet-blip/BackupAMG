@@ -209,6 +209,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /favicon.ico", s.handlePublicAsset)
 	mux.HandleFunc("GET /marca.svg", s.handlePublicAsset)
 	mux.HandleFunc("GET /marca-completa.svg", s.handlePublicAsset)
+	mux.HandleFunc("GET /marca-barra.svg", s.handlePublicAsset)
 	mux.HandleFunc("GET /api/v1/session", s.handleSession)
 	mux.HandleFunc("GET /api/v1/status", s.handleStatus)
 	mux.HandleFunc("GET /api/v1/events", s.handleEvents)
