@@ -3,7 +3,6 @@
 package main
 
 import (
-	"image/color"
 	"sync"
 	"time"
 	"unsafe"
@@ -36,6 +35,8 @@ type trayApp struct {
 	mu           sync.Mutex
 	hwnd         windows.Handle
 	icons        map[string]windows.Handle
+	bigIcons     map[string]windows.Handle
+	bigPx        int
 	iconKey      string
 	online       bool
 	busy         bool
@@ -67,12 +68,43 @@ func (t *trayApp) run() {
 	if err := t.register(); err != nil {
 		return
 	}
+	// Iconos del logotipo, uno por estado, en el tamaño de icono pequeño del sistema (16 px al 100 %).
+	px := 16
+	if value, _, _ := pGetSystemMetrics.Call(49); value >= 16 { // SM_CXSMICON
+		px = int(value)
+	}
+	loadIcon := func(name string) windows.Handle {
+		raw, err := trayICO(name, px)
+		if err != nil {
+			return 0
+		}
+		return iconHandle(raw)
+	}
 	t.icons = map[string]windows.Handle{
-		status.Green:  iconHandle(circleICO(color.NRGBA{R: 23, G: 121, B: 74, A: 255})),
-		status.Yellow: iconHandle(circleICO(color.NRGBA{R: 224, G: 161, B: 0, A: 255})),
-		status.Red:    iconHandle(circleICO(color.NRGBA{R: 168, G: 36, B: 26, A: 255})),
-		status.Blue:   iconHandle(circleICO(color.NRGBA{R: 35, G: 80, B: 216, A: 255})),
-		"gray":        iconHandle(circleICO(color.NRGBA{R: 138, G: 144, B: 155, A: 255})),
+		status.Green:  loadIcon(iconOK),
+		status.Yellow: loadIcon(iconWarn),
+		status.Red:    loadIcon(iconError),
+		status.Blue:   loadIcon(iconBusy),
+		"gray":        loadIcon(iconOff),
+	}
+	// Iconos más grandes para la cabecera del menú (tamaño de icono normal del sistema: 32 px al 100 %).
+	t.bigPx = 32
+	if value, _, _ := pGetSystemMetrics.Call(11); value >= 32 { // SM_CXICON
+		t.bigPx = int(value)
+	}
+	loadBig := func(name string) windows.Handle {
+		raw, err := trayICO(name, t.bigPx)
+		if err != nil {
+			return 0
+		}
+		return iconHandle(raw)
+	}
+	t.bigIcons = map[string]windows.Handle{
+		status.Green:  loadBig(iconOK),
+		status.Yellow: loadBig(iconWarn),
+		status.Red:    loadBig(iconError),
+		status.Blue:   loadBig(iconBusy),
+		"gray":        loadBig(iconOff),
 	}
 	t.title = "Servicio parado"
 	t.detail = "Las copias no se están haciendo"
@@ -297,6 +329,18 @@ func (t *trayApp) applyPendingToast() {
 	_ = shellNotify(nimModify, &nid)
 }
 
+// headerIcon devuelve el icono grande del estado para la cabecera del menú y su tamaño en píxeles.
+func (t *trayApp) headerIcon(level string, online bool) (windows.Handle, int) {
+	if !online {
+		level = "gray"
+	}
+	icon := t.bigIcons[level]
+	if icon == 0 {
+		icon = t.bigIcons["gray"]
+	}
+	return icon, t.bigPx
+}
+
 func (t *trayApp) snapshot() (title, detail string, online, busy bool, level string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -312,6 +356,8 @@ func (t *trayApp) wndProc(hwnd windows.Handle, msg uint32, wParam, lParam uintpt
 			0x007B,         // WM_CONTEXTMENU
 			0x0400, 0x0401: // NIN_SELECT / NIN_KEYSELECT
 			t.togglePopup()
+		case 0x0405: // NIN_BALLOONUSERCLICK: pulsar el aviso abre el panel (el pipe va en otro hilo)
+			go openPanel("")
 		}
 		return 0
 	case wmAppRefresh:

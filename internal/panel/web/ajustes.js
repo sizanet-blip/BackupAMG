@@ -2,10 +2,11 @@ function pintarAjustes() {
   const raiz = document.getElementById("pantalla-ajustes");
   raiz.replaceChildren();
   const titulo = tituloPagina(textos.menu.ajustes, textos.ajustesAyuda);
-  const datos = document.createElement("dl");
-  datos.className = "datos";
+  const datos = document.createElement("div");
+  datos.className = "tarjetas-datos";
   const registro = document.createElement("pre");
   registro.className = "registro";
+  registro.hidden = true;
   const aviso = document.createElement("p");
   aviso.className = "resultado";
   const nivel = document.createElement("select");
@@ -25,14 +26,34 @@ function pintarAjustes() {
   const nota = document.createElement("p");
   nota.className = "nota";
   nota.textContent = textos.paqueteNota;
-  raiz.append(titulo, datos, nivel, ver, registro, generar, nota, aviso);
+  const cajaRegistro = document.createElement("article");
+  cajaRegistro.className = "bloque";
+  const hRegistro = document.createElement("h2");
+  hRegistro.textContent = textos.tituloRegistro;
+  const ayudaRegistro = document.createElement("p");
+  ayudaRegistro.className = "nota";
+  ayudaRegistro.textContent = textos.ayudaRegistro;
+  const accionesRegistro = document.createElement("div");
+  accionesRegistro.className = "barra-filtros";
+  accionesRegistro.append(ver, nivel);
+  nivel.hidden = true;
+  cajaRegistro.append(hRegistro, ayudaRegistro, accionesRegistro, registro);
+  const cajaSoporte = document.createElement("article");
+  cajaSoporte.className = "bloque";
+  const hSoporte = document.createElement("h2");
+  hSoporte.textContent = textos.tituloSoporte;
+  cajaSoporte.append(hSoporte, nota, generar, aviso);
+  raiz.append(titulo, datos, cajaRegistro, cajaSoporte);
 
   function fila(etiqueta, valor) {
-    const bloque = document.createElement("div");
-    const dt = document.createElement("dt");
+    const bloque = document.createElement("article");
+    bloque.className = "dato";
+    const dt = document.createElement("h2");
     dt.textContent = etiqueta;
-    const dd = document.createElement("dd");
+    const dd = document.createElement("p");
+    dd.className = "fuerte dato-valor";
     dd.textContent = valor || textos.desconocido;
+    dd.title = valor || "";
     bloque.append(dt, dd);
     datos.append(bloque);
   }
@@ -59,9 +80,14 @@ function pintarAjustes() {
     const lineas = cuerpo.lines || [];
     registro.textContent = lineas.length ? lineas.join("\n") : textos.sinRegistro;
   }
-  ver.addEventListener("click", cargarRegistro);
+  ver.addEventListener("click", () => {
+    const abrir = registro.hidden;
+    registro.hidden = !abrir;
+    nivel.hidden = !abrir;
+    ver.textContent = abrir ? textos.ocultarRegistro : textos.verRegistro;
+    if (abrir) cargarRegistro();
+  });
   nivel.addEventListener("change", cargarRegistro);
-  cargarRegistro();
 
   generar.addEventListener("click", async () => {
     generar.disabled = true;

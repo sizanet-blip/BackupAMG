@@ -91,7 +91,25 @@ func runWithRetries(ctx context.Context, logger *logging.Logger, trigger string)
 	}
 }
 
+// afterBackup hace lo que toca después de una copia: la verificación periódica, si toca.
+// Solo tras una copia correcta o con avisos. Si la verificación se alarga y se pasa la hora de la
+// siguiente copia, esa copia se hace nada más acabar, para que no se pierda.
+func afterBackup(ctx context.Context, logger *logging.Logger, cfg *config.Config, code int) {
+	if code != 0 && code != 3 {
+		return
+	}
+	next, nextErr := scheduler.NextAfterOn(time.Now(), cfg.Schedule.Times, cfg.Schedule.Weekdays)
+	if !verifyIfDue(ctx, logger) || nextErr != nil || ctx.Err() != nil {
+		return
+	}
+	if !time.Now().Before(next) {
+		logger.Warn("La verificación ha durado más que el hueco hasta la próxima copia; se hace ahora", "slot", next.Format(time.RFC3339))
+		runWithRetries(ctx, logger, report.TriggerMissedOnStartup)
+	}
+}
+
 func runSchedule(ctx context.Context, logger *logging.Logger, cfg *config.Config) {
+	startupCode := 0
 	if cfg.Schedule.RunMissedOnStartup {
 		if slot, ok := scheduler.MostRecentDueOn(time.Now(), lastAttemptTime(), cfg.Schedule.Times, cfg.Schedule.Weekdays); ok {
 			trigger := report.TriggerMissedOnStartup
@@ -99,9 +117,10 @@ func runSchedule(ctx context.Context, logger *logging.Logger, cfg *config.Config
 				trigger = report.TriggerScheduled
 			}
 			logger.Info("Hay una copia pendiente", "slot", slot.Format(time.RFC3339), "trigger", trigger)
-			runWithRetries(ctx, logger, trigger)
+			startupCode = runWithRetries(ctx, logger, trigger)
 		}
 	}
+	afterBackup(ctx, logger, cfg, startupCode)
 	for {
 		if ctx.Err() != nil {
 			return
@@ -131,7 +150,8 @@ func runSchedule(ctx context.Context, logger *logging.Logger, cfg *config.Config
 			if time.Since(next) > time.Minute && cfg.Schedule.RunMissedOnStartup {
 				trigger = report.TriggerMissedOnStartup
 			}
-			runWithRetries(ctx, logger, trigger)
+			code := runWithRetries(ctx, logger, trigger)
+			afterBackup(ctx, logger, cfg, code)
 		}
 	}
 }

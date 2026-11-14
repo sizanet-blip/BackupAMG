@@ -113,6 +113,9 @@ func saveDestination(raw []byte) ([]string, error) {
 		}
 		volumeID = id
 	}
+	if problems := prepareNewDestination(path); len(problems) > 0 {
+		return problems, nil
+	}
 	err := config.SetDestination(paths.ConfigPath(), path, volumeID)
 	var invalid *config.ValidationError
 	if errors.As(err, &invalid) {
@@ -123,6 +126,36 @@ func saveDestination(raw []byte) ([]string, error) {
 	}
 	signalConfigReload()
 	return nil, nil
+}
+
+// prepareNewDestination deja listo el destino nuevo antes de cambiar la configuración.
+// Si la carpeta no tiene copias, crea el repositorio con la contraseña que ya se usa.
+// Si ya las tiene, solo comprueba que esa contraseña las abre.
+// Si algo falla devuelve el motivo y la configuración en uso no se toca.
+// No borra ni mueve nada del destino anterior.
+func prepareNewDestination(newPath string) []string {
+	cfg, err := config.Load(paths.ConfigPath())
+	if err != nil {
+		return nil // sin configuración válida no hay nada en uso que proteger; SetDestination lo dirá
+	}
+	if sameDestination(cfg.Repository.Path, newPath) {
+		return nil
+	}
+	password, err := secrets.Open(cfg.Repository.PasswordEncrypted)
+	if err != nil {
+		return []string{"No se pudo usar la contraseña guardada, así que el destino no se ha cambiado."}
+	}
+	if err := prepareRepository(newPath, password); err != nil {
+		if strings.Contains(err.Error(), "no abre") {
+			return []string{"En esa carpeta ya hay copias guardadas con otra contraseña, y la contraseña actual no las abre. El destino no se ha cambiado. Elige otra carpeta o usa la contraseña con la que se hicieron esas copias."}
+		}
+		return []string{"No se ha podido preparar la carpeta nueva (" + err.Error() + "). El destino no se ha cambiado."}
+	}
+	return nil
+}
+
+func sameDestination(a, b string) bool {
+	return strings.EqualFold(filepath.Clean(strings.TrimSpace(a)), filepath.Clean(strings.TrimSpace(b)))
 }
 
 func testDestination(raw []byte) (any, error) {
@@ -176,9 +209,9 @@ func probeDestination(path string) map[string]any {
 		if result["writable"] == true {
 			result["ok"] = true
 			if dirExistsAt(path) {
-				result["message"] = "Se puede escribir. Todavía no hay copias ahí."
+				result["message"] = "Se puede escribir. Todavía no hay copias ahí; se preparará para guardarlas."
 			} else {
-				result["message"] = "Se puede escribir. La carpeta se creará con la primera copia."
+				result["message"] = "Se puede escribir. La carpeta se creará y se preparará para guardar las copias."
 			}
 		} else {
 			result["message"] = "No se puede escribir en esa carpeta."

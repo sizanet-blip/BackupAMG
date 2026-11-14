@@ -41,9 +41,11 @@ type popupRow struct {
 }
 
 type popupAction struct {
-	label    string
-	enabled  bool
-	handler  func()
+	label   string
+	hint    string
+	bold    bool
+	enabled bool
+	handler func()
 }
 
 func newPopup(app *trayApp) *popupWindow {
@@ -204,10 +206,10 @@ func (p *popupWindow) repaint() {
 }
 
 func (p *popupWindow) rebuild() {
-	title, detail, online, busy, _ := p.app.snapshot()
-	p.actions = []popupAction{
-		{label: "Abrir panel", enabled: online, handler: func() { go openPanel("") }},
-		{label: "Copiar ahora", enabled: online && !busy, handler: func() {
+	_, _, online, busy, _ := p.app.snapshot()
+	handlers := map[menuAction]func(){
+		menuPanel: func() { go openPanel("") },
+		menuBackup: func() {
 			go func() {
 				if err := panel.RequestBackup(); err != nil {
 					pushToast("No se pudo iniciar la copia", err.Error())
@@ -217,12 +219,24 @@ func (p *popupWindow) rebuild() {
 					pPostMessage.Call(uintptr(p.app.hwnd), wmAppRefresh, 0, 0)
 				}
 			}()
-		}},
-		{label: "Ver historial", enabled: online, handler: func() { go openPanel("historial") }},
-		{label: "Restaurar archivos", enabled: online, handler: func() { go openPanel("restaurar") }},
+		},
+		menuHistory: func() { go openPanel("historial") },
+		menuRestore: func() { go openPanel("restaurar") },
+		// Solo cierra el icono: el servicio y las copias siguen. Se pide al hilo de interfaz
+		// que cierre su ventana con un mensaje, sin llamadas de foco ni de pipe desde aquí.
+		menuHide: func() {
+			if p.app.hwnd != 0 {
+				pPostMessage.Call(uintptr(p.app.hwnd), wmAppQuit, 0, 0)
+			}
+		},
 	}
-	_ = title
-	_ = detail
+	p.actions = p.actions[:0]
+	for _, entry := range menuEntries(online, busy) {
+		p.actions = append(p.actions, popupAction{
+			label: entry.label, hint: entry.hint, bold: entry.bold, enabled: entry.enabled,
+			handler: handlers[entry.action],
+		})
+	}
 }
 
 func (p *popupWindow) layout() (int, int) {
@@ -249,11 +263,13 @@ func (p *popupWindow) layout() (int, int) {
 		p.rows = append(p.rows, popupRow{kind: 1, bounds: rect{int32(pad), int32(y), int32(width - pad), int32(y + h)}, action: i})
 		y += h
 	}
-	y += s(10)
-
-	legendH := s(110)
-	p.rows = append(p.rows, popupRow{kind: 3, bounds: rect{int32(pad), int32(y), int32(width - pad), int32(y + legendH)}})
-	y += legendH + pad
+	// Separador y «Ocultar el icono», con su aclaración debajo.
+	sepH := s(9)
+	p.rows = append(p.rows, popupRow{kind: 4, bounds: rect{int32(pad), int32(y), int32(width - pad), int32(y + sepH)}})
+	y += sepH
+	hideH := s(58)
+	p.rows = append(p.rows, popupRow{kind: 2, bounds: rect{int32(pad), int32(y), int32(width - pad), int32(y + hideH)}, action: 4})
+	y += hideH + pad
 	return width, y
 }
 
@@ -429,7 +445,7 @@ func (p *popupWindow) hit(x, y int) bool {
 
 func (p *popupWindow) actionAt(x, y int) int {
 	for _, row := range p.rows {
-		if row.kind != 1 {
+		if row.kind != 1 && row.kind != 2 {
 			continue
 		}
 		if x >= int(row.bounds.Left) && x < int(row.bounds.Right) && y >= int(row.bounds.Top) && y < int(row.bounds.Bottom) {
@@ -459,7 +475,7 @@ func (p *popupWindow) paint(hdc windows.Handle) {
 	var card rect
 	var hasCard bool
 	for _, row := range p.rows {
-		if row.kind == 0 || row.kind == 1 || row.kind == 2 {
+		if row.kind == 0 || row.kind == 1 || row.kind == 2 || row.kind == 4 {
 			if !hasCard {
 				card = row.bounds
 				hasCard = true
@@ -486,11 +502,10 @@ func (p *popupWindow) paint(hdc windows.Handle) {
 		switch row.kind {
 		case 0:
 			p.drawHeader(hdc, row.bounds, title, detail, level, online)
-		case 1:
+		case 1, 2:
 			p.drawAction(hdc, row.bounds, row.action, row.action == p.hover)
-		case 3:
-			drawCard(hdc, row.bounds, scale(16, p.dpi))
-			p.drawLegend(hdc, row.bounds)
+		case 4:
+			drawSeparator(hdc, row.bounds)
 		}
 	}
 }
@@ -525,7 +540,12 @@ func (p *popupWindow) drawHeader(hdc windows.Handle, r rect, title, detail, leve
 
 	cx := int(r.Left) + scale(28, p.dpi)
 	cy := int(r.Top) + scale(32, p.dpi)
-	drawStatusDot(hdc, cx, cy, scale(14, p.dpi), levelColor(level, online))
+	if icon, size := p.app.headerIcon(level, online); icon != 0 {
+		// El escudo del logotipo con el punto del estado.
+		pDrawIconEx.Call(uintptr(hdc), uintptr(cx-size/2), uintptr(cy-size/2), uintptr(icon), uintptr(size), uintptr(size), 0, 0, 3)
+	} else {
+		drawStatusDot(hdc, cx, cy, scale(14, p.dpi), levelColor(level, online))
+	}
 
 	// Botón cerrar: así no hace falta volver a acertar el icono de la bandeja.
 	btn := scale(28, p.dpi)
@@ -589,50 +609,36 @@ func (p *popupWindow) drawAction(hdc windows.Handle, r rect, action int, hover b
 
 	pSetBkMode.Call(uintptr(hdc), 1)
 	pSetTextColor.Call(uintptr(hdc), uintptr(textColor))
-	weight := action == 0
-	f := font(scale(14, p.dpi), weight)
+	f := font(scale(14, p.dpi), item.bold)
 	old, _, _ := pSelectObject.Call(uintptr(hdc), uintptr(f))
-	textRect := rect{r.Left + int32(scale(44, p.dpi)), r.Top, r.Right - int32(scale(12, p.dpi)), r.Bottom}
-	drawText(hdc, item.label, textRect, 0x0024) // left | vcenter
+	if item.hint == "" {
+		textRect := rect{r.Left + int32(scale(44, p.dpi)), r.Top, r.Right - int32(scale(12, p.dpi)), r.Bottom}
+		drawText(hdc, item.label, textRect, 0x0024) // left | vcenter
+	} else {
+		textRect := rect{r.Left + int32(scale(44, p.dpi)), r.Top + int32(scale(8, p.dpi)), r.Right - int32(scale(12, p.dpi)), r.Top + int32(scale(30, p.dpi))}
+		drawText(hdc, item.label, textRect, 0x0020)
+	}
 	pSelectObject.Call(uintptr(hdc), old)
 	pDeleteObject.Call(uintptr(f))
+	if item.hint != "" {
+		pSetTextColor.Call(uintptr(hdc), uintptr(rgb(100, 108, 122)))
+		small := font(scale(12, p.dpi), false)
+		old, _, _ = pSelectObject.Call(uintptr(hdc), uintptr(small))
+		hintRect := rect{r.Left + int32(scale(44, p.dpi)), r.Top + int32(scale(30, p.dpi)), r.Right - int32(scale(12, p.dpi)), r.Bottom - int32(scale(4, p.dpi))}
+		drawText(hdc, item.hint, hintRect, 0x0020)
+		pSelectObject.Call(uintptr(hdc), old)
+		pDeleteObject.Call(uintptr(small))
+	}
 }
 
-func (p *popupWindow) drawLegend(hdc windows.Handle, r rect) {
-	pSetBkMode.Call(uintptr(hdc), 1)
-	pSetTextColor.Call(uintptr(hdc), uintptr(rgb(100, 108, 122)))
-	f := font(scale(12, p.dpi), true)
-	old, _, _ := pSelectObject.Call(uintptr(hdc), uintptr(f))
-	title := rect{r.Left + int32(scale(14, p.dpi)), r.Top + int32(scale(10, p.dpi)), r.Right - int32(scale(14, p.dpi)), r.Top + int32(scale(28, p.dpi))}
-	drawText(hdc, "Colores del icono", title, 0)
-	pSelectObject.Call(uintptr(hdc), old)
-	pDeleteObject.Call(uintptr(f))
-
-	items := []struct {
-		label string
-		color uint32
-	}{
-		{"Al día", rgb(23, 121, 74)},
-		{"Con avisos", rgb(224, 161, 0)},
-		{"Falla o sin copia", rgb(168, 36, 26)},
-		{"Copiando", rgb(35, 80, 216)},
-		{"Servicio parado", rgb(138, 144, 155)},
-	}
-	f2 := font(scale(12, p.dpi), false)
-	old, _, _ = pSelectObject.Call(uintptr(hdc), uintptr(f2))
-	pSetTextColor.Call(uintptr(hdc), uintptr(rgb(55, 65, 81)))
-	colW := (int(r.Right-r.Left) - scale(28, p.dpi)) / 2
-	for i, item := range items {
-		col := i % 2
-		row := i / 2
-		x := int(r.Left) + scale(14, p.dpi) + col*colW
-		y := int(r.Top) + scale(36, p.dpi) + row*scale(24, p.dpi)
-		drawStatusDot(hdc, x+scale(6, p.dpi), y+scale(8, p.dpi), scale(6, p.dpi), item.color)
-		tr := rect{int32(x + scale(18, p.dpi)), int32(y), int32(x + colW - scale(8, p.dpi)), int32(y + scale(18, p.dpi))}
-		drawText(hdc, item.label, tr, 0x0024)
-	}
-	pSelectObject.Call(uintptr(hdc), old)
-	pDeleteObject.Call(uintptr(f2))
+func drawSeparator(hdc windows.Handle, r rect) {
+	pen := createPen(rgb(230, 232, 236))
+	oldPen, _, _ := pSelectObject.Call(uintptr(hdc), uintptr(pen))
+	y := (r.Top + r.Bottom) / 2
+	pMoveToEx.Call(uintptr(hdc), uintptr(r.Left+12), uintptr(y), 0)
+	pLineTo.Call(uintptr(hdc), uintptr(r.Right-12), uintptr(y))
+	pSelectObject.Call(uintptr(hdc), oldPen)
+	pDeleteObject.Call(uintptr(pen))
 }
 
 func headerColor(level string, online bool) uint32 {
@@ -708,6 +714,10 @@ func drawActionIcon(hdc windows.Handle, action, cx, cy, r int, color uint32) {
 		pLineTo.Call(uintptr(hdc), uintptr(cx+r), uintptr(cy+r/2))
 	case 3: // restore
 		pEllipse.Call(uintptr(hdc), uintptr(cx-r), uintptr(cy-r), uintptr(cx+r), uintptr(cy+r))
+	case 4: // ocultar el icono: ojo tachado
+		pEllipse.Call(uintptr(hdc), uintptr(cx-r), uintptr(cy-r/2), uintptr(cx+r), uintptr(cy+r/2))
+		pMoveToEx.Call(uintptr(hdc), uintptr(cx-r), uintptr(cy+r), 0)
+		pLineTo.Call(uintptr(hdc), uintptr(cx+r), uintptr(cy-r))
 	}
 	pSelectObject.Call(uintptr(hdc), oldB)
 	pSelectObject.Call(uintptr(hdc), oldP)

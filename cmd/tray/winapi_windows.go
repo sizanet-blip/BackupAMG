@@ -3,6 +3,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"time"
 	"unsafe"
 
@@ -166,6 +167,7 @@ var (
 	pSystemParametersInfo          = user32.NewProc("SystemParametersInfoW")
 	pSetLayeredWindowAttributes    = user32.NewProc("SetLayeredWindowAttributes")
 	pGetSystemMetrics              = user32.NewProc("GetSystemMetrics")
+	pDrawIconEx                    = user32.NewProc("DrawIconEx")
 	pRegisterHotKey                = user32.NewProc("RegisterHotKey")
 	pUnregisterHotKey              = user32.NewProc("UnregisterHotKey")
 	pSetTimer                      = user32.NewProc("SetTimer")
@@ -277,12 +279,16 @@ func iconHandle(ico []byte) windows.Handle {
 	}
 	defer pReleaseDC.Call(0, hdc)
 
-	const size = 32
+	// El tamaño sale de la propia imagen (cabecera BITMAPINFOHEADER del icono).
+	size := int(binary.LittleEndian.Uint32(ico[26:30]))
+	if size < 16 || size > 256 {
+		return 0
+	}
 	bmi := bitmapInfo{
 		Header: bitmapInfoHeader{
 			Size:     40,
-			Width:    size,
-			Height:   -size,
+			Width:    int32(size),
+			Height:   -int32(size),
 			Planes:   1,
 			BitCount: 32,
 		},
@@ -302,7 +308,7 @@ func iconHandle(ico []byte) windows.Handle {
 	for y := 0; y < size; y++ {
 		copy(dst[y*size*4:(y+1)*size*4], src[(size-1-y)*size*4:(size-y)*size*4])
 	}
-	hbmMask, _, _ := pCreateCompatibleBitmap.Call(hdc, size, size)
+	hbmMask, _, _ := pCreateCompatibleBitmap.Call(hdc, uintptr(size), uintptr(size))
 	info := iconInfo{Icon: 1, Mask: windows.Handle(hbmMask), Color: windows.Handle(hbmColor)}
 	hicon, _, _ := pCreateIconIndirect.Call(uintptr(unsafe.Pointer(&info)))
 	pDeleteObject.Call(hbmColor)

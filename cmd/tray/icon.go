@@ -1,24 +1,66 @@
 package main
 
 import (
+	"bytes"
+	"embed"
 	"encoding/binary"
+	"errors"
 	"image"
-	"image/color"
+	"image/draw"
+	"image/png"
 )
 
-func circleICO(c color.NRGBA) []byte {
-	const n = 32
-	img := image.NewNRGBA(image.Rect(0, 0, n, n))
-	for y := 0; y < n; y++ {
-		for x := 0; x < n; x++ {
-			dx := float64(x - 15)
-			dy := float64(y - 15)
-			if dx*dx+dy*dy <= 13*13 {
-				img.SetNRGBA(x, y, c)
-			}
+//go:embed iconos/*.ico
+var trayIcons embed.FS
+
+// Nombres de los iconos de la bandeja, uno por estado.
+const (
+	iconOK    = "tray-ok.ico"
+	iconWarn  = "tray-warn.ico"
+	iconError = "tray-error.ico"
+	iconBusy  = "tray-busy.ico"
+	iconOff   = "tray-off.ico"
+)
+
+// trayICO devuelve el icono de un estado en el tamaño del fichero que más se acerca a px
+// (el menor que no sea más pequeño que px, o el mayor si no hay). Sale en el formato que
+// espera iconHandle. Los ficheros de iconos/ vienen en PNG dentro del .ico.
+func trayICO(name string, px int) ([]byte, error) {
+	raw, err := trayIcons.ReadFile("iconos/" + name)
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) < 22 || binary.LittleEndian.Uint16(raw[2:]) != 1 {
+		return nil, errors.New("el fichero no es un icono")
+	}
+	count := int(binary.LittleEndian.Uint16(raw[4:]))
+	bestW, bestOff, bestSize := 0, 0, 0
+	for i := 0; i < count; i++ {
+		entry := raw[6+16*i:]
+		w := int(entry[0])
+		if w == 0 {
+			w = 256
+		}
+		size := int(binary.LittleEndian.Uint32(entry[8:]))
+		off := int(binary.LittleEndian.Uint32(entry[12:]))
+		better := bestW == 0 ||
+			(bestW < px && w > bestW) ||
+			(w >= px && w < bestW)
+		if better {
+			bestW, bestOff, bestSize = w, off, size
 		}
 	}
-	return encodeICO(img)
+	if bestW == 0 || bestOff+bestSize > len(raw) {
+		return nil, errors.New("el icono no tiene imágenes")
+	}
+	img, err := png.Decode(bytes.NewReader(raw[bestOff : bestOff+bestSize]))
+	if err != nil {
+		return nil, err
+	}
+	b := img.Bounds()
+	nrgba := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+	draw.Draw(nrgba, nrgba.Bounds(), img, b.Min, draw.Src)
+	return encodeICO(nrgba), nil
 }
 
 func encodeICO(img *image.NRGBA) []byte {

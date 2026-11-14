@@ -1,7 +1,55 @@
+const iconoDisco = icono("hard-drive");
+const iconoCarpeta = icono("folder");
+const iconoReloj = icono("clock");
+
+// Título grande de cada paso, con su frase de ayuda.
+function tituloPaso(titulo, ayuda) {
+  const h = document.createElement("h2");
+  h.textContent = titulo;
+  const trozos = [h];
+  if (ayuda) {
+    const p = document.createElement("p");
+    p.className = "nota";
+    p.textContent = ayuda;
+    trozos.push(p);
+  }
+  return trozos;
+}
+
+// Sección con título pequeño y, si hace falta, una línea de ayuda.
+function seccionAsistente(titulo, ayuda) {
+  const seccion = document.createElement("section");
+  seccion.className = "seccion";
+  const h = document.createElement("h2");
+  h.textContent = titulo;
+  seccion.append(h);
+  if (ayuda) {
+    const p = document.createElement("p");
+    p.className = "nota";
+    p.textContent = ayuda;
+    seccion.append(p);
+  }
+  return seccion;
+}
+
+function filaIcono(icono, texto, clase) {
+  const fila = document.createElement("div");
+  fila.className = "fila-carpeta" + (clase ? " " + clase : "");
+  const caja = document.createElement("span");
+  caja.className = "fila-carpeta-icono";
+  caja.innerHTML = icono;
+  const ruta = document.createElement("span");
+  ruta.className = "fila-carpeta-ruta";
+  ruta.textContent = texto;
+  fila.append(caja, ruta);
+  return fila;
+}
+
 function pintarAsistente(info) {
   const raiz = document.getElementById("pantalla-asistente");
   raiz.hidden = false;
-  const datos = {
+  const CLAVE_BORRADOR = "backupamg-asistente";
+  const valoresIniciales = () => ({
     paso: 0,
     path: "",
     probado: "",
@@ -12,21 +60,50 @@ function pintarAsistente(info) {
     password: "",
     confirm: "",
     ack: false
-  };
+  });
+  const datos = valoresIniciales();
+  // El borrador vive solo en esta pestaña. Nunca guarda la contraseña ni nada secreto.
+  function guardarBorrador() {
+    try {
+      sessionStorage.setItem(CLAVE_BORRADOR, JSON.stringify({
+        paso: datos.paso, path: datos.path, sources: datos.sources,
+        excludes: datos.excludes, times: datos.times, weekdays: datos.weekdays
+      }));
+    } catch (e) { /* sin almacenamiento: el asistente funciona igual */ }
+  }
+  function borrarBorrador() {
+    try { sessionStorage.removeItem(CLAVE_BORRADOR); } catch (e) { /* nada que borrar */ }
+  }
+  let borradorRecuperado = false;
+  try {
+    const guardado = JSON.parse(sessionStorage.getItem(CLAVE_BORRADOR) || "null");
+    if (guardado && (guardado.paso > 0 || guardado.path || (guardado.sources || []).length)) {
+      datos.path = String(guardado.path || "");
+      datos.sources = Array.isArray(guardado.sources) ? guardado.sources.map(String) : [];
+      if (Array.isArray(guardado.excludes)) datos.excludes = guardado.excludes.map(String);
+      if (Array.isArray(guardado.times)) datos.times = guardado.times.map(String);
+      if (Array.isArray(guardado.weekdays)) datos.weekdays = guardado.weekdays.map(Number);
+      // Sin la contraseña no se puede pasar del paso 2: se vuelve a ella.
+      datos.paso = Math.min(Number(guardado.paso) || 0, 1);
+      borradorRecuperado = true;
+    }
+  } catch (e) { /* borrador ilegible: se ignora */ }
+  // El selector del paso 3 se conserva entre pasos: recuerda por dónde ibas y no se cierra al añadir.
+  let exploradorCopiar = null;
+  let exploradorAbierto = false;
   dibujar();
 
   function dibujar() {
+    guardarBorrador();
     raiz.replaceChildren();
     const marca = document.createElement("div");
-    marca.className = "marca marca-centro";
+    marca.className = "marca-centro";
     const imagen = document.createElement("img");
-    imagen.src = "/marca.svg";
-    imagen.width = 40;
-    imagen.height = 40;
-    imagen.alt = "";
-    const nombre = document.createElement("span");
-    nombre.textContent = textos.marca;
-    marca.append(imagen, nombre);
+    imagen.src = "/marca-completa.svg";
+    imagen.className = "marca-completa";
+    imagen.height = 84;
+    imagen.alt = textos.marca;
+    marca.append(imagen);
     const pista = document.createElement("div");
     pista.className = "pasos-track";
     const nombres = document.createElement("div");
@@ -48,7 +125,28 @@ function pintarAsistente(info) {
     const cuerpo = document.createElement("div");
     const aviso = document.createElement("p");
     aviso.className = "resultado";
-    raiz.append(marca, pista, nombres, cuerpo, aviso);
+    raiz.append(marca, pista, nombres);
+    if (borradorRecuperado) {
+      borradorRecuperado = false;
+      const caja = document.createElement("div");
+      caja.className = "caja-info";
+      const texto = document.createElement("p");
+      texto.textContent = textos.borradorRecuperado;
+      const descartar = document.createElement("button");
+      descartar.type = "button";
+      descartar.className = "secundario";
+      descartar.textContent = textos.borradorDescartar;
+      descartar.addEventListener("click", () => {
+        borrarBorrador();
+        Object.assign(datos, valoresIniciales());
+        exploradorCopiar = null;
+        exploradorAbierto = false;
+        dibujar();
+      });
+      caja.append(texto, descartar);
+      raiz.append(caja);
+    }
+    raiz.append(cuerpo, aviso);
     if (datos.paso === 0) pasoDestino(cuerpo, aviso);
     if (datos.paso === 1) pasoClave(cuerpo, aviso);
     if (datos.paso === 2) pasoCopiar(cuerpo, aviso);
@@ -64,13 +162,21 @@ function pintarAsistente(info) {
     redAyuda.className = "nota";
     redAyuda.textContent = textos.ayudaRed;
     const campo = document.createElement("label");
+    campo.className = "campo-columna";
     campo.append(document.createTextNode(textos.rutaDestino));
     const ruta = document.createElement("input");
     ruta.type = "text";
     ruta.value = datos.path;
     campo.append(ruta);
-    const explorar = document.createElement("div");
-    explorar.className = "lista";
+    const falta = notaFalta();
+    let probando = false;
+    const explorador = crearExplorador({ modo: "elegir", alElegir: (carpeta) => {
+      ruta.value = carpeta;
+      datos.probado = "";
+      aviso.textContent = "";
+      actualizar();
+    } });
+    const explorar = explorador.raiz;
     const probar = document.createElement("button");
     probar.type = "button";
     probar.className = "secundario";
@@ -78,12 +184,37 @@ function pintarAsistente(info) {
     const siguiente = document.createElement("button");
     siguiente.type = "button";
     siguiente.textContent = textos.siguiente;
-    cuerpo.append(ayuda, redAyuda, campo, explorar, probar, siguiente);
-    abrir("");
+    const pie = document.createElement("div");
+    pie.className = "pie-paso";
+    pie.append(probar, falta, siguiente);
+    cuerpo.append(...tituloPaso(textos.eligeDestino), ayuda, redAyuda, campo, explorar, pie);
+    explorador.cargarSiHaceFalta();
+    const revisarSiguiente = exigir(siguiente, falta, () => {
+      const actual = ruta.value.trim();
+      if (!actual) return textos.faltaDestino;
+      if (datos.probado !== actual) return textos.faltaProbar;
+      return "";
+    });
+    function actualizar() {
+      revisarSiguiente();
+      probar.disabled = probando || !ruta.value.trim();
+    }
+    ruta.addEventListener("input", () => {
+      datos.path = ruta.value.trim();
+      guardarBorrador();
+      if (datos.probado && ruta.value.trim() !== datos.probado) {
+        datos.probado = "";
+        aviso.textContent = "";
+      }
+      actualizar();
+    });
+    actualizar();
     probar.addEventListener("click", async () => {
       datos.path = ruta.value.trim();
       datos.probado = "";
-      probar.disabled = true;
+      probando = true;
+      actualizar();
+      aviso.className = "resultado";
       aviso.textContent = textos.probando;
       const respuesta = await fetch("/api/v1/destination/test", {
         method: "POST",
@@ -91,43 +222,23 @@ function pintarAsistente(info) {
         body: JSON.stringify({ path: datos.path })
       });
       const cuerpoRes = await respuesta.json().catch(() => ({}));
-      probar.disabled = false;
-      aviso.className = cuerpoRes.ok ? "resultado aviso-ok" : "resultado";
-      aviso.textContent = cuerpoRes.message || cuerpoRes.error || textos.error;
+      probando = false;
+      const detalle = cuerpoRes.message || cuerpoRes.error || textos.error;
+      aviso.className = cuerpoRes.ok ? "resultado aviso-ok" : "resultado aviso";
+      aviso.textContent = cuerpoRes.ok ? textos.destinoCorrecto + ". " + detalle : detalle + " " + textos.revisaDestino;
       if (cuerpoRes.ok) datos.probado = datos.path;
+      actualizar();
     });
     siguiente.addEventListener("click", () => {
       datos.path = ruta.value.trim();
       if (!datos.path || datos.probado !== datos.path) {
-        aviso.className = "resultado";
-        aviso.textContent = textos.probar;
+        aviso.className = "resultado aviso";
+        aviso.textContent = textos.faltaProbar;
         return;
       }
       datos.paso = 1;
       dibujar();
     });
-    async function abrir(path) {
-      explorar.replaceChildren();
-      const respuesta = await fetch("/api/v1/folders?path=" + encodeURIComponent(path));
-      if (!respuesta.ok) return;
-      const carpetas = await respuesta.json();
-      if (path) {
-        const usar = document.createElement("button");
-        usar.type = "button";
-        usar.className = "secundario";
-        usar.textContent = textos.usarCarpeta + " " + path;
-        usar.addEventListener("click", () => { ruta.value = path; datos.probado = ""; });
-        explorar.append(usar);
-      }
-      (carpetas || []).forEach((carpeta) => {
-        const boton = document.createElement("button");
-        boton.type = "button";
-        boton.className = "secundario";
-        boton.textContent = carpeta.name || carpeta.path;
-        boton.addEventListener("click", () => abrir(carpeta.path));
-        explorar.append(boton);
-      });
-    }
   }
 
   function pasoClave(cuerpo, aviso) {
@@ -164,7 +275,10 @@ function pintarAsistente(info) {
     imprimir.type = "button";
     imprimir.className = "secundario";
     imprimir.textContent = textos.imprimir;
-    hoja.append(hojaTitulo, imprimir, descargar);
+    const accionesHoja = document.createElement("div");
+    accionesHoja.className = "barra-filtros";
+    accionesHoja.append(imprimir, descargar);
+    hoja.append(hojaTitulo, accionesHoja);
     const casilla = document.createElement("label");
     const marca = document.createElement("input");
     marca.type = "checkbox";
@@ -176,8 +290,16 @@ function pintarAsistente(info) {
     const siguiente = document.createElement("button");
     siguiente.type = "button";
     siguiente.textContent = textos.continuar;
-    pie.append(atras, siguiente);
+    const falta = notaFalta();
+    pie.append(atras, falta, siguiente);
     cuerpo.append(titulo, ayuda, nueva.etiqueta, fuerza, repite.etiqueta, coinciden, peligro, hoja, casilla, pie);
+    const revisarSiguiente = exigir(siguiente, falta, () => {
+      if (!nueva.input.value) return textos.faltaClave;
+      if (nueva.input.value !== repite.input.value) return textos.noCoinciden + ".";
+      if (!marca.checked) return textos.faltaMarca;
+      return "";
+    });
+    marca.addEventListener("change", revisarSiguiente);
     function revisar() {
       const clave = nueva.input.value;
       const n = fuerzaClave(clave);
@@ -191,8 +313,8 @@ function pintarAsistente(info) {
       coinciden.textContent = igual ? "✓ " + textos.coinciden : textos.noCoinciden;
       coinciden.className = igual ? "nota aviso-ok" : "nota aviso";
     }
-    nueva.input.addEventListener("input", revisar);
-    repite.input.addEventListener("input", revisar);
+    nueva.input.addEventListener("input", () => { revisar(); revisarSiguiente(); });
+    repite.input.addEventListener("input", () => { revisar(); revisarSiguiente(); });
     revisar();
     function fuerzaClave(clave) {
       let n = 0;
@@ -218,109 +340,132 @@ function pintarAsistente(info) {
   }
 
   function pasoCopiar(cuerpo, aviso) {
+    const titulo = tituloPaso(textos.eligeCopiar, textos.eligeCopiarAyuda);
+
+    const habituales = seccionAsistente(textos.habituales);
+    const quien = document.createElement("p");
+    quien.className = "nota";
+    const mosaico = document.createElement("div");
+    mosaico.className = "mosaico";
+    habituales.append(quien, mosaico);
+
+    const otras = seccionAsistente(textos.otrasCarpetas, textos.otrasAyuda);
     const lista = document.createElement("div");
     lista.className = "lista";
-    datos.sources.forEach((ruta) => {
-      const fila = document.createElement("div");
-      fila.className = "fila";
-      const nombre = document.createElement("span");
-      nombre.textContent = ruta;
-      const quitar = document.createElement("button");
-      quitar.type = "button";
-      quitar.className = "secundario";
-      quitar.textContent = textos.quitar;
-      quitar.addEventListener("click", () => {
-        datos.sources = datos.sources.filter((item) => item !== ruta);
-        dibujar();
+    const anadirOtra = document.createElement("button");
+    anadirOtra.type = "button";
+    anadirOtra.className = "secundario";
+    anadirOtra.textContent = "+ " + textos.anadirOtra;
+    if (!exploradorCopiar) {
+      exploradorCopiar = crearExplorador({
+        modo: "anadir",
+        alElegir: (carpeta) => {
+          if (!datos.sources.includes(carpeta)) datos.sources.push(carpeta);
+          dibujar();
+        },
+        elegidas: () => datos.sources,
+        alQuitar: (ruta) => {
+          datos.sources = datos.sources.filter((item) => item !== ruta);
+          dibujar();
+        },
+        alCerrar: () => {
+          exploradorAbierto = false;
+          exploradorCopiar.raiz.hidden = true;
+        }
       });
-      fila.append(nombre, quitar);
-      lista.append(fila);
+    }
+    const explorador = exploradorCopiar;
+    const explorar = explorador.raiz;
+    explorar.hidden = !exploradorAbierto;
+    if (exploradorAbierto) explorador.refrescar();
+    anadirOtra.addEventListener("click", () => {
+      exploradorAbierto = true;
+      explorar.hidden = false;
+      explorador.cargarSiHaceFalta();
+      explorador.refrescar();
     });
-    const accesos = document.createElement("div");
-    accesos.className = "lista";
+    otras.append(lista, anadirOtra, explorar);
+
     fetch("/api/v1/shortcuts").then(async (respuesta) => {
-      if (!respuesta.ok) return;
-      const items = await respuesta.json();
-      (items || []).forEach((item) => {
-        const boton = document.createElement("button");
-        boton.type = "button";
-        boton.className = "secundario";
-        const nombre = (textos.atajos && textos.atajos[item.id]) || item.id;
-        boton.textContent = nombre + " · " + item.user;
-        boton.addEventListener("click", () => {
-          if (!datos.sources.includes(item.path)) datos.sources.push(item.path);
+      const items = respuesta.ok ? ((await respuesta.json()) || []) : [];
+      const rutas = new Set(items.map((item) => item.path));
+      const usuarios = Array.from(new Set(items.map((item) => item.user).filter(Boolean)));
+      quien.textContent = usuarios.length === 1 ? textos.delUsuario.replace("{nombre}", usuarios[0]) : "";
+      items.forEach((item) => {
+        const marcada = datos.sources.includes(item.path);
+        const tarjeta = tarjetaCarpeta(item, marcada, () => {
+          datos.sources = marcada ? datos.sources.filter((ruta) => ruta !== item.path) : datos.sources.concat([item.path]);
           dibujar();
         });
-        accesos.append(boton);
+        mosaico.append(tarjeta.boton);
+        pedirTamano(item.path, tarjeta.peso);
+      });
+      datos.sources.filter((ruta) => !rutas.has(ruta)).forEach((ruta) => {
+        const fila = filaIcono(iconoCarpeta, ruta);
+        const quitar = document.createElement("button");
+        quitar.type = "button";
+        quitar.className = "enlace";
+        quitar.textContent = textos.quitar;
+        quitar.addEventListener("click", () => {
+          datos.sources = datos.sources.filter((item) => item !== ruta);
+          dibujar();
+        });
+        fila.append(quitar);
+        lista.append(fila);
       });
     });
-    const explorar = document.createElement("div");
-    explorar.className = "lista";
+
+    const noCopiar = seccionAsistente(textos.noCopiar, textos.noCopiarAyuda);
     const exclusiones = document.createElement("div");
     exclusiones.className = "plantillas";
     textos.plantillas.forEach((plantilla) => {
-      const etiqueta = document.createElement("label");
-      const caja = document.createElement("input");
-      caja.type = "checkbox";
-      caja.checked = datos.excludes.includes(plantilla.patron);
-      caja.addEventListener("change", () => {
-        if (caja.checked && !datos.excludes.includes(plantilla.patron)) datos.excludes.push(plantilla.patron);
-        if (!caja.checked) datos.excludes = datos.excludes.filter((item) => item !== plantilla.patron);
-      });
-      etiqueta.append(caja, document.createTextNode(plantilla.texto));
-      exclusiones.append(etiqueta);
+      exclusiones.append(filaRegla(plantilla, datos.excludes.includes(plantilla.patron), (activa) => {
+        if (activa && !datos.excludes.includes(plantilla.patron)) datos.excludes.push(plantilla.patron);
+        if (!activa) datos.excludes = datos.excludes.filter((item) => item !== plantilla.patron);
+      }));
     });
-    cuerpo.append(lista, accesos, explorar, exclusiones, botonAtras(), botonSiguiente(() => {
+    noCopiar.append(exclusiones);
+
+    const siguiente = botonSiguiente(() => {
       if (!datos.sources.length) {
         aviso.textContent = textos.sinCarpetas;
         return false;
       }
       return true;
-    }));
-    abrirCarpetas("");
-    async function abrirCarpetas(path) {
-      explorar.replaceChildren();
-      const respuesta = await fetch("/api/v1/folders?path=" + encodeURIComponent(path));
-      if (!respuesta.ok) return;
-      const carpetas = await respuesta.json();
-      (carpetas || []).forEach((carpeta) => {
-        const fila = document.createElement("div");
-        fila.className = "fila";
-        const abrir = document.createElement("button");
-        abrir.type = "button";
-        abrir.className = "secundario";
-        abrir.textContent = carpeta.name || carpeta.path;
-        abrir.addEventListener("click", () => abrirCarpetas(carpeta.path));
-        const anadir = document.createElement("button");
-        anadir.type = "button";
-        anadir.textContent = textos.anadirCarpeta;
-        anadir.addEventListener("click", () => {
-          if (!datos.sources.includes(carpeta.path)) datos.sources.push(carpeta.path);
-          dibujar();
-        });
-        fila.append(abrir, anadir);
-        explorar.append(fila);
-      });
-    }
+    });
+    const falta = notaFalta();
+    exigir(siguiente, falta, () => (datos.sources.length ? "" : textos.sinCarpetas));
+    cuerpo.append(...titulo, habituales, otras, noCopiar, pieAtras(siguiente, falta));
   }
 
   function pasoCuando(cuerpo, aviso) {
+    const titulo = tituloPaso(textos.eligeCuando, textos.eligeCuandoAyuda);
+    const horasSec = seccionAsistente(textos.horas);
     const horas = document.createElement("div");
-    horas.className = "horas";
+    horas.className = "lista";
     datos.times.forEach((hora) => {
+      const fila = document.createElement("div");
+      fila.className = "fila-hora";
+      const icono = document.createElement("span");
+      icono.className = "fila-carpeta-icono";
+      icono.innerHTML = iconoReloj;
+      const texto = document.createElement("strong");
+      texto.textContent = hora;
       const quitar = document.createElement("button");
       quitar.type = "button";
-      quitar.className = "secundario";
-      quitar.textContent = hora + " · " + textos.quitar;
+      quitar.className = "enlace";
+      quitar.textContent = textos.quitar;
       quitar.addEventListener("click", () => {
         datos.times = datos.times.filter((item) => item !== hora);
         dibujar();
       });
-      horas.append(quitar);
+      fila.append(icono, texto, quitar);
+      horas.append(fila);
     });
     const nueva = document.createElement("input");
     nueva.type = "text";
     nueva.placeholder = "13:30";
+    nueva.setAttribute("aria-label", textos.horas);
     const anadir = document.createElement("button");
     anadir.type = "button";
     anadir.className = "secundario";
@@ -334,7 +479,15 @@ function pintarAsistente(info) {
       if (!datos.times.includes(hora)) datos.times.push(hora);
       dibujar();
     });
+    const entrada = document.createElement("div");
+    entrada.className = "barra-filtros";
+    entrada.append(nueva, anadir);
+    horasSec.append(horas, entrada);
+
+    const diasSec = seccionAsistente(textos.diasTitulo);
     const dias = document.createElement("div");
+    dias.className = "opciones-tipo";
+    let revisarSiguiente = () => {};
     textos.dias.forEach((nombre, i) => {
       const etiqueta = document.createElement("label");
       const caja = document.createElement("input");
@@ -343,11 +496,13 @@ function pintarAsistente(info) {
       caja.addEventListener("change", () => {
         if (caja.checked) datos.weekdays.push(i + 1);
         else datos.weekdays = datos.weekdays.filter((dia) => dia !== i + 1);
+        revisarSiguiente();
       });
       etiqueta.append(caja, document.createTextNode(nombre));
       dias.append(etiqueta);
     });
-    cuerpo.append(horas, nueva, anadir, dias, botonAtras(), botonSiguiente(() => {
+    diasSec.append(dias);
+    const siguiente = botonSiguiente(() => {
       if (!datos.times.length) {
         aviso.textContent = textos.sinHora;
         return false;
@@ -357,26 +512,41 @@ function pintarAsistente(info) {
         return false;
       }
       return true;
-    }));
+    });
+    const falta = notaFalta();
+    revisarSiguiente = exigir(siguiente, falta, () => {
+      if (!datos.times.length) return textos.sinHora;
+      if (!datos.weekdays.length) return textos.sinDias;
+      return "";
+    });
+    cuerpo.append(...titulo, horasSec, diasSec, pieAtras(siguiente, falta));
   }
 
   function pasoResumen(cuerpo, aviso) {
-    const nota = document.createElement("p");
-    nota.className = "nota";
-    nota.textContent = textos.resumenAyuda;
-    const lista = document.createElement("div");
-    lista.className = "lista";
-    [datos.path].concat(datos.sources).concat(datos.times).forEach((linea) => {
-      const p = document.createElement("p");
-      p.textContent = linea;
-      lista.append(p);
-    });
+    const titulo = tituloPaso(textos.revisaTitulo, textos.resumenAyuda);
+    const bloque = (tituloSec, filas) => {
+      const seccion = seccionAsistente(tituloSec);
+      const lista = document.createElement("div");
+      lista.className = "lista resumen";
+      filas.forEach((fila) => lista.append(fila));
+      seccion.append(lista);
+      return seccion;
+    };
+    const dias = datos.weekdays.length === 7
+      ? textos.todosLosDias
+      : datos.weekdays.slice().sort((a, b) => a - b).map((dia) => textos.dias[dia - 1]).join(", ");
+    const resumen = [
+      bloque(textos.resumenDestino, [filaIcono(iconoDisco, datos.path)]),
+      bloque(textos.resumenCarpetas, datos.sources.map((ruta) => filaIcono(iconoCarpeta, ruta))),
+      bloque(textos.resumenCuando, datos.times.map((hora) => filaIcono(iconoReloj, hora + " · " + dias)))
+    ];
     const empezar = document.createElement("button");
     empezar.type = "button";
     empezar.textContent = textos.empezar;
-    cuerpo.append(nota, lista, botonAtras(), empezar);
+    cuerpo.append(...titulo, ...resumen, pieAtras(empezar));
     empezar.addEventListener("click", async () => {
       empezar.disabled = true;
+      empezar.textContent = textos.preparando;
       const respuesta = await fetch("/api/v1/setup", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
@@ -394,13 +564,23 @@ function pintarAsistente(info) {
       const cuerpoRes = await respuesta.json().catch(() => ({}));
       if (!respuesta.ok) {
         empezar.disabled = false;
+        empezar.textContent = textos.empezar;
         aviso.textContent = (cuerpoRes.fields || [cuerpoRes.error || textos.error]).join(" ");
         return;
       }
       datos.password = "";
       datos.confirm = "";
+      borrarBorrador();
       location.reload();
     });
+  }
+
+  function pieAtras(principal, falta) {
+    const pie = document.createElement("div");
+    pie.className = "pie-paso";
+    if (falta) pie.append(botonAtras(), falta, principal);
+    else pie.append(botonAtras(), principal);
+    return pie;
   }
 
   function botonAtras() {
@@ -463,6 +643,7 @@ function imprimirHoja(equipo, destino) {
 
 function secreto(texto, valor) {
   const etiqueta = document.createElement("label");
+  etiqueta.className = "campo-columna";
   etiqueta.append(document.createTextNode(texto));
   const input = document.createElement("input");
   input.type = "password";

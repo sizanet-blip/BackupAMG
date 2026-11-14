@@ -1,26 +1,89 @@
 let seleccion = [];
+let detalleSeleccion = {};
 
+// Pantalla Restaurar: elige la copia por fecha, explora como en el selector de carpetas,
+// marca lo que quieres recuperar y elige dónde guardarlo.
 function pintarRestaurar() {
   const raiz = document.getElementById("pantalla-restaurar");
   raiz.replaceChildren();
   seleccion = [];
+  detalleSeleccion = {};
   let copiaId = "";
   let copiaCuando = "";
+  let actual = "";
+  let nodos = [];
+  let raices = [];
+  let busqueda = "";
+  let pedido = 0;
+  let trabajando = false;
 
-  const pasos = document.createElement("p");
-  pasos.className = "pasos";
-  const arbol = document.createElement("div");
-  arbol.className = "lista";
-  const miga = document.createElement("div");
-  miga.className = "miga";
+  const titulo = tituloPagina(textos.menu.restaurar, textos.restaurarAyuda);
+  const cuerpo = document.createElement("div");
+  cuerpo.className = "restaurar-cuerpo-nuevo";
+  const mensaje = document.createElement("p");
+  mensaje.className = "nota";
+  raiz.append(titulo, mensaje, cuerpo);
+
+  // ---- 1. Copia
+  const cajaCopia = document.createElement("article");
+  cajaCopia.className = "bloque";
+  const hCopia = document.createElement("h2");
+  hCopia.textContent = textos.restaurarCopiaTitulo;
+  const filaCopia = document.createElement("label");
+  filaCopia.className = "restaurar-copia";
+  const etiquetaCopia = document.createElement("span");
+  etiquetaCopia.textContent = textos.copiaDel;
+  const selectorCopia = document.createElement("select");
+  filaCopia.append(etiquetaCopia, selectorCopia);
+  cajaCopia.append(hCopia, filaCopia);
+
+  // ---- 2. Qué recuperar (mismo aspecto que el selector de carpetas)
+  const cajaQue = document.createElement("article");
+  cajaQue.className = "bloque";
+  const hQue = document.createElement("h2");
+  hQue.textContent = textos.restaurarQueTitulo;
+  const ayudaQue = document.createElement("p");
+  ayudaQue.className = "nota";
+  ayudaQue.textContent = textos.restaurarCarpetaEntera;
+  const explorador = document.createElement("div");
+  explorador.className = "explorador";
+  const barra = document.createElement("div");
+  barra.className = "explorador-barra";
+  const subir = document.createElement("button");
+  subir.type = "button";
+  subir.className = "secundario explorador-subir";
+  subir.innerHTML = icono("arrow-up");
+  const subirTexto = document.createElement("span");
+  subirTexto.textContent = textos.carpetaSuperior;
+  subir.append(subirTexto);
+  const campoRuta = document.createElement("input");
+  campoRuta.type = "text";
+  campoRuta.readOnly = true;
+  campoRuta.className = "explorador-ruta";
+  campoRuta.setAttribute("aria-label", textos.carpetaActual);
   const consulta = document.createElement("input");
-  consulta.type = "text";
-  consulta.placeholder = textos.buscarArchivo;
-  const resultados = document.createElement("div");
-  resultados.className = "lista";
-  const resumen = document.createElement("div");
+  consulta.type = "search";
+  consulta.className = "explorador-buscar";
+  consulta.placeholder = textos.buscarEnCopia;
+  consulta.setAttribute("aria-label", textos.buscarEnCopia);
+  barra.append(subir, campoRuta, consulta);
+  const lista = document.createElement("div");
+  lista.className = "explorador-lista";
+  lista.setAttribute("role", "list");
+  const elegidosCaja = document.createElement("div");
+  elegidosCaja.className = "explorador-elegidas";
+  elegidosCaja.hidden = true;
+  explorador.append(barra, lista, elegidosCaja);
+  cajaQue.append(hQue, ayudaQue, explorador);
+
+  // ---- 3. Dónde guardarlo
+  const cajaDonde = document.createElement("article");
+  cajaDonde.className = "bloque";
+  const hDonde = document.createElement("h2");
+  hDonde.textContent = textos.guardarEn;
   const destino = document.createElement("input");
   destino.type = "text";
+  destino.setAttribute("aria-label", textos.otraCarpeta);
   const radioOtra = document.createElement("input");
   radioOtra.type = "radio";
   radioOtra.name = "modo-restaurar";
@@ -28,77 +91,269 @@ function pintarRestaurar() {
   const radioOriginal = document.createElement("input");
   radioOriginal.type = "radio";
   radioOriginal.name = "modo-restaurar";
-  const aviso = document.createElement("p");
-  aviso.className = "nota";
-  aviso.hidden = true;
-  aviso.textContent = textos.avisoOriginal;
+  const otra = document.createElement("label");
+  otra.append(radioOtra, document.createTextNode(textos.otraCarpeta + " "));
+  const recomendado = document.createElement("span");
+  recomendado.className = "pastilla ok";
+  recomendado.textContent = textos.recomendado;
+  otra.append(recomendado);
+  const original = document.createElement("label");
+  original.append(radioOriginal, document.createTextNode(textos.sitioOriginal));
+  const avisoOriginal = document.createElement("p");
+  avisoOriginal.className = "nota";
+  avisoOriginal.hidden = true;
+  avisoOriginal.textContent = textos.avisoOriginal;
   const sustituir = document.createElement("label");
   sustituir.hidden = true;
   const caja = document.createElement("input");
   caja.type = "checkbox";
   sustituir.append(caja, document.createTextNode(textos.sustituir));
+  const opcionesDonde = document.createElement("div");
+  opcionesDonde.className = "restaurar-opciones";
+  opcionesDonde.append(otra, destino, original, avisoOriginal, sustituir);
+  cajaDonde.append(hDonde, opcionesDonde);
+
+  const resultado = document.createElement("p");
+  resultado.className = "resultado";
+
+  // ---- Barra fija con el resumen y el botón
+  const barraFija = document.createElement("div");
+  barraFija.className = "guardar-barra";
+  const resumen = document.createElement("span");
+  const cancelarRestaurar = document.createElement("button");
+  cancelarRestaurar.type = "button";
+  cancelarRestaurar.className = "secundario";
+  cancelarRestaurar.textContent = textos.cancelarRestauracion;
+  cancelarRestaurar.hidden = true;
   const recuperar = document.createElement("button");
   recuperar.type = "button";
   recuperar.textContent = textos.recuperar;
-  const resultado = document.createElement("p");
-  resultado.className = "resultado";
-  const lista = document.createElement("div");
+  barraFija.append(resumen, cancelarRestaurar, recuperar);
 
-  function pintarPasos() {
-    pasos.replaceChildren();
-    const estadoPaso = [copiaId ? "hecho" : "activo", copiaId ? "activo" : "", ""];
-    textos.pasosRestaurar.forEach((nombre, indice) => {
-      const paso = document.createElement("span");
-      paso.className = estadoPaso[indice];
-      paso.textContent = (indice + 1) + "  " + nombre;
-      pasos.append(paso);
-    });
+  cuerpo.append(cajaCopia, cajaQue, cajaDonde, resultado, barraFija);
+
+  // ---- Auxiliares
+  function iconoNodo(esCarpeta) {
+    const icono = document.createElement("span");
+    icono.className = "fila-carpeta-icono";
+    icono.innerHTML = esCarpeta
+      ? icono("folder")
+      : icono("file");
+    return icono;
+  }
+
+  function carpetaDe(ruta) {
+    const arriba = String(ruta || "").replace(/[\\/]+$/, "").replace(/[\\/][^\\/]+$/, "");
+    return arriba.length < 3 ? "" : arriba;
+  }
+
+  function padre(ruta) {
+    return raices.includes(ruta) ? "" : carpetaDe(ruta);
+  }
+
+  function alternar(nodo, marcado) {
+    if (marcado && !seleccion.includes(nodo.path)) {
+      seleccion.push(nodo.path);
+      detalleSeleccion[nodo.path] = { nombre: nodo.name, tipo: nodo.type, tam: nodo.size || 0 };
+    }
+    if (!marcado) seleccion = seleccion.filter((item) => item !== nodo.path);
+    pintarResumen();
+    pintarElegidos();
   }
 
   function pintarResumen() {
-    resumen.replaceChildren();
-    const titulo = document.createElement("strong");
-    titulo.textContent = textos.archivosSeleccionados.replace("{n}", String(seleccion.length));
-    const nota = document.createElement("p");
-    nota.className = "nota";
-    nota.textContent = copiaCuando ? textos.deLaCopia.replace("{cuando}", copiaCuando) : "";
-    resumen.append(titulo, nota);
+    const n = seleccion.length;
+    const hayCarpetas = seleccion.some((ruta) => (detalleSeleccion[ruta] || {}).tipo === "dir");
+    recuperar.disabled = trabajando || !n || !copiaId;
+    if (!n) {
+      resumen.textContent = textos.marcaQueRecuperar;
+      return;
+    }
+    let texto = n === 1 ? textos.unElemento : textos.variosElementos.replace("{n}", String(n));
+    if (hayCarpetas) {
+      texto += " · " + textos.incluyeCarpetas;
+    } else {
+      const suma = seleccion.reduce((total, ruta) => total + ((detalleSeleccion[ruta] || {}).tam || 0), 0);
+      texto += " · " + tamano(suma);
+    }
+    resumen.textContent = texto;
   }
 
-  const cuerpo = document.createElement("div");
-  cuerpo.className = "restaurar-cuerpo";
-  const izquierda = document.createElement("div");
-  izquierda.className = "columna";
-  const derecha = document.createElement("div");
-  derecha.className = "columna";
-  const tituloCopias = document.createElement("h2");
-  tituloCopias.textContent = textos.copiasDisponibles;
-  izquierda.append(tituloCopias, lista);
-  derecha.append(consulta, miga, arbol, resultados);
-  cuerpo.append(izquierda, derecha);
+  function pintarElegidos() {
+    elegidosCaja.replaceChildren();
+    elegidosCaja.hidden = !seleccion.length;
+    if (!seleccion.length) return;
+    const tituloElegidos = document.createElement("strong");
+    tituloElegidos.textContent = textos.elegidoParaRecuperar.replace("{n}", String(seleccion.length));
+    const chips = document.createElement("div");
+    chips.className = "explorador-chips";
+    seleccion.forEach((ruta) => {
+      const chip = document.createElement("span");
+      chip.className = "explorador-chip";
+      const texto = document.createElement("span");
+      texto.textContent = ruta;
+      texto.title = ruta;
+      const quitar = document.createElement("button");
+      quitar.type = "button";
+      quitar.className = "enlace";
+      quitar.textContent = textos.quitar;
+      quitar.setAttribute("aria-label", textos.quitarCarpeta.replace("{ruta}", ruta));
+      quitar.addEventListener("click", () => {
+        seleccion = seleccion.filter((item) => item !== ruta);
+        pintarResumen();
+        pintarElegidos();
+        pintarLista();
+      });
+      chip.append(texto, quitar);
+      chips.append(chip);
+    });
+    elegidosCaja.append(tituloElegidos, chips);
+  }
 
-  const pie = document.createElement("div");
-  pie.className = "barra-restaurar";
-  const modos = document.createElement("div");
-  const etiqGuardar = document.createElement("p");
-  etiqGuardar.textContent = textos.guardarEn;
-  const otra = document.createElement("label");
-  otra.append(radioOtra, document.createTextNode(textos.otraCarpeta + " "));
-  const marca = document.createElement("span");
-  marca.className = "pastilla ok";
-  marca.textContent = textos.recomendado;
-  otra.append(marca);
-  const original = document.createElement("label");
-  original.append(radioOriginal, document.createTextNode(textos.sitioOriginal));
-  modos.append(etiqGuardar, otra, destino, original, aviso, sustituir);
-  pie.append(resumen, modos, recuperar);
-  raiz.append(tituloPagina(textos.menu.restaurar, textos.restaurarAyuda), pasos, cuerpo, pie, resultado);
-  pintarPasos();
-  pintarResumen();
+  function filaNodo(nodo, conRuta) {
+    const fila = document.createElement("div");
+    fila.className = "explorador-fila";
+    fila.setAttribute("role", "listitem");
+    const marca = document.createElement("input");
+    marca.type = "checkbox";
+    marca.className = "explorador-marca";
+    marca.checked = seleccion.includes(nodo.path);
+    marca.setAttribute("aria-label", textos.seleccionarElemento.replace("{nombre}", nodo.name));
+    marca.addEventListener("change", () => alternar(nodo, marca.checked));
+    const esCarpeta = nodo.type === "dir";
+    const nombre = document.createElement(esCarpeta ? "button" : "span");
+    nombre.className = "explorador-nombre" + (esCarpeta ? "" : " archivo");
+    if (esCarpeta) {
+      nombre.type = "button";
+      nombre.addEventListener("click", () => {
+        consulta.value = "";
+        busqueda = "";
+        cargarCarpeta(nodo.path);
+      });
+    }
+    const texto = document.createElement("span");
+    texto.className = "explorador-texto";
+    const principal = document.createElement("span");
+    principal.textContent = nodo.name;
+    texto.append(principal);
+    if (conRuta) {
+      const donde = document.createElement("small");
+      donde.textContent = carpetaDe(nodo.path) || nodo.path;
+      texto.append(donde);
+    }
+    nombre.append(iconoNodo(esCarpeta), texto);
+    fila.append(marca, nombre);
+    if (!esCarpeta && nodo.size) {
+      const peso = document.createElement("span");
+      peso.className = "explorador-dato";
+      peso.textContent = tamano(nodo.size);
+      fila.append(peso);
+    }
+    if (nodo.mtime) {
+      const fecha = document.createElement("span");
+      fecha.className = "explorador-dato";
+      fecha.textContent = fechaCorta(nodo.mtime);
+      fila.append(fecha);
+    }
+    return fila;
+  }
 
+  function pintarLista(mensajeVacio) {
+    campoRuta.value = actual || textos.esteEquipo;
+    subir.disabled = !actual || !!busqueda;
+    lista.replaceChildren();
+    if (mensajeVacio) {
+      const vacio = document.createElement("p");
+      vacio.className = "explorador-vacio";
+      vacio.textContent = mensajeVacio;
+      lista.append(vacio);
+      return;
+    }
+    if (!nodos.length) {
+      const vacio = document.createElement("p");
+      vacio.className = "explorador-vacio";
+      vacio.textContent = busqueda ? textos.sinResultadosRestaurar : textos.carpetaVaciaRestaurar;
+      lista.append(vacio);
+      return;
+    }
+    nodos.forEach((nodo) => lista.append(filaNodo(nodo, !!busqueda)));
+  }
+
+  async function cargarCarpeta(ruta) {
+    const id = ++pedido;
+    actual = ruta;
+    nodos = [];
+    campoRuta.value = actual || textos.esteEquipo;
+    lista.replaceChildren();
+    const cargando = document.createElement("p");
+    cargando.className = "explorador-vacio";
+    cargando.textContent = textos.cargandoRestaurar;
+    lista.append(cargando);
+    let respuesta;
+    try {
+      respuesta = await fetch("/api/v1/snapshots/" + encodeURIComponent(copiaId) + "/files?path=" + encodeURIComponent(ruta));
+    } catch (e) {
+      if (id === pedido) pintarLista(textos.error);
+      return;
+    }
+    if (id !== pedido) return;
+    if (!respuesta.ok) {
+      pintarLista(textos.error);
+      return;
+    }
+    nodos = (await respuesta.json()) || [];
+    if (!ruta) raices = nodos.map((nodo) => nodo.path);
+    pintarLista();
+  }
+
+  async function buscar() {
+    const texto = consulta.value.trim();
+    busqueda = texto;
+    if (!texto) {
+      cargarCarpeta(actual);
+      return;
+    }
+    const id = ++pedido;
+    campoRuta.value = textos.resultadosDeBusqueda;
+    subir.disabled = true;
+    const respuesta = await fetch("/api/v1/snapshots/" + encodeURIComponent(copiaId) + "/find?q=" + encodeURIComponent(patronBusqueda(texto)));
+    const datos = await respuesta.json().catch(() => []);
+    if (id !== pedido) return;
+    if (!respuesta.ok) {
+      nodos = [];
+      pintarLista((datos && datos.error) || textos.error);
+      return;
+    }
+    nodos = datos || [];
+    pintarLista();
+  }
+
+  function elegirCopia(id, cuando) {
+    copiaId = id;
+    copiaCuando = cuando;
+    seleccion = [];
+    detalleSeleccion = {};
+    consulta.value = "";
+    busqueda = "";
+    pintarResumen();
+    pintarElegidos();
+    cargarCarpeta("");
+  }
+
+  // ---- Eventos
+  subir.addEventListener("click", () => cargarCarpeta(padre(actual)));
+  let buscarTimer = 0;
+  consulta.addEventListener("input", () => {
+    clearTimeout(buscarTimer);
+    buscarTimer = setTimeout(buscar, 300);
+  });
+  selectorCopia.addEventListener("change", () => {
+    const opcion = selectorCopia.selectedOptions[0];
+    elegirCopia(selectorCopia.value, opcion ? opcion.dataset.cuando : "");
+  });
   function modoOriginal() {
     const activo = radioOriginal.checked;
-    aviso.hidden = !activo;
+    avisoOriginal.hidden = !activo;
     sustituir.hidden = !activo;
     destino.disabled = activo;
   }
@@ -110,141 +365,70 @@ function pintarRestaurar() {
     const datos = await respuesta.json();
     destino.value = datos.target || "";
   });
+
   fetch("/api/v1/snapshots").then(async (respuesta) => {
     if (!respuesta.ok) {
-      resultado.textContent = textos.error;
+      cuerpo.hidden = true;
+      mensaje.className = "aviso";
+      mensaje.textContent = textos.error;
       return;
     }
-    const copias = await respuesta.json();
-    let grupo = "";
-    (copias || []).forEach((item, indice) => {
-      const siguiente = grupoCopia(item.time);
-      if (siguiente && siguiente !== grupo) {
-        grupo = siguiente;
-        const cabecera = document.createElement("p");
-        cabecera.className = "grupo-copia";
-        cabecera.textContent = grupo;
-        lista.append(cabecera);
-      }
-      const boton = document.createElement("button");
-      boton.type = "button";
-      boton.className = "copia-item" + (indice === 0 ? " activo" : "");
-      const textoFecha = document.createElement("strong");
-      textoFecha.textContent = tituloCopia(item.time);
-      const sub = document.createElement("small");
-      sub.textContent = subtituloCopia(item.time);
-      if (indice === 0) {
-        const reciente = document.createElement("span");
-        reciente.className = "pastilla";
-        reciente.textContent = textos.masReciente;
-        boton.append(textoFecha, reciente, sub);
-      } else {
-        boton.append(textoFecha, sub);
-      }
-      boton.addEventListener("click", () => {
-        copiaId = item.id;
-        copiaCuando = tituloCopia(item.time);
-        lista.querySelectorAll(".copia-item").forEach((nodo) => nodo.classList.remove("activo"));
-        boton.classList.add("activo");
-        pintarPasos();
-        pintarResumen();
-        cargarCarpeta("");
-      });
-      lista.append(boton);
-      if (indice === 0) {
-        copiaId = item.id;
-        copiaCuando = tituloCopia(item.time);
-      }
-    });
-    pintarPasos();
-    pintarResumen();
-    if (copiaId) cargarCarpeta("");
-  });
-
-  function pintarMiga(path) {
-    miga.replaceChildren();
-    const raizBtn = document.createElement("button");
-    raizBtn.type = "button";
-    raizBtn.textContent = "Equipo";
-    raizBtn.addEventListener("click", () => cargarCarpeta(""));
-    miga.append(raizBtn);
-    const partes = String(path || "").split(/\\/).filter(Boolean);
-    let acumulado = "";
-    partes.forEach((parte) => {
-      acumulado = acumulado ? acumulado.replace(/\\$/, "") + "\\" + parte : parte;
-      const boton = document.createElement("button");
-      boton.type = "button";
-      boton.textContent = parte;
-      const destinoRuta = acumulado;
-      boton.addEventListener("click", () => cargarCarpeta(destinoRuta));
-      miga.append(document.createTextNode(" › "), boton);
-    });
-  }
-
-  async function cargarCarpeta(path) {
-    arbol.replaceChildren();
-    resultados.replaceChildren();
-    pintarMiga(path);
-    const respuesta = await fetch("/api/v1/snapshots/" + encodeURIComponent(copiaId) + "/files?path=" + encodeURIComponent(path));
-    if (!respuesta.ok) return;
-    const nodos = await respuesta.json();
-    (nodos || []).forEach((nodo) => arbol.append(filaArchivo(nodo)));
-  }
-
-  function filaArchivo(nodo) {
-    const fila = document.createElement("label");
-    fila.className = "fila tabla-archivo";
-    const cajaNodo = document.createElement("input");
-    cajaNodo.type = "checkbox";
-    cajaNodo.checked = seleccion.includes(nodo.path);
-    cajaNodo.addEventListener("change", () => {
-      if (cajaNodo.checked && !seleccion.includes(nodo.path)) seleccion.push(nodo.path);
-      if (!cajaNodo.checked) seleccion = seleccion.filter((item) => item !== nodo.path);
-      pintarResumen();
-    });
-    const nombre = document.createElement("button");
-    nombre.type = "button";
-    nombre.className = "enlace";
-    nombre.textContent = (nodo.type === "dir" ? "📁 " : "📄 ") + nodo.name;
-    if (nodo.type === "dir") nombre.addEventListener("click", (evento) => {
-      evento.preventDefault();
-      cargarCarpeta(nodo.path);
-    });
-    const modificado = document.createElement("span");
-    modificado.className = "nota";
-    modificado.textContent = nodo.mtime ? fechaCorta(nodo.mtime) : "";
-    const peso = document.createElement("span");
-    peso.className = "nota";
-    peso.textContent = nodo.type === "dir" ? "" : tamano(nodo.size);
-    fila.append(cajaNodo, nombre, modificado, peso);
-    return fila;
-  }
-
-  let buscarTimer = 0;
-  consulta.addEventListener("input", () => {
-    clearTimeout(buscarTimer);
-    buscarTimer = setTimeout(buscar, 300);
-  });
-  async function buscar() {
-    resultados.replaceChildren();
-    if (!consulta.value.trim() || !copiaId) return;
-    const respuesta = await fetch("/api/v1/snapshots/" + encodeURIComponent(copiaId) + "/find?q=" + encodeURIComponent(consulta.value));
-    const nodos = await respuesta.json().catch(() => []);
-    if (!respuesta.ok) {
-      resultado.textContent = (nodos && nodos.error) || textos.error;
+    const copias = ((await respuesta.json()) || []).slice().sort((a, b) => new Date(b.time) - new Date(a.time));
+    if (!copias.length) {
+      cuerpo.hidden = true;
+      mensaje.textContent = textos.sinCopiasRestaurar;
       return;
     }
-    (nodos || []).forEach((nodo) => resultados.append(filaArchivo(nodo)));
-  }
+    const grupos = {};
+    copias.forEach((item, indice) => {
+      const nombreGrupo = grupoCopia(item.time) || textos.recientes;
+      if (!grupos[nombreGrupo]) {
+        const grupo = document.createElement("optgroup");
+        grupo.label = nombreGrupo;
+        grupos[nombreGrupo] = grupo;
+        selectorCopia.append(grupo);
+      }
+      const opcion = document.createElement("option");
+      opcion.value = item.id;
+      opcion.dataset.cuando = tituloCopia(item.time);
+      opcion.textContent = tituloCopia(item.time) + " · " + subtituloCopia(item.time) + (indice === 0 ? " · " + textos.masReciente.toLowerCase() : "");
+      grupos[nombreGrupo].append(opcion);
+    });
+    selectorCopia.value = copias[0].id;
+    elegirCopia(copias[0].id, tituloCopia(copias[0].time));
+  });
+
+  cancelarRestaurar.addEventListener("click", async () => {
+    if (!(await confirmarSiNo({
+      titulo: textos.confirmarCancelarRestauracionTitulo,
+      texto: textos.confirmarCancelarRestauracion,
+      aceptar: textos.cancelarRestauracion,
+      cancelar: textos.seguirRestaurando,
+      peligro: true
+    }))) return;
+    cancelarRestaurar.disabled = true;
+    resultado.textContent = textos.cancelandoRestauracion;
+    await fetch("/api/v1/cancel", { method: "POST", headers: { "X-CSRF-Token": csrf } });
+    vigilar();
+  });
 
   recuperar.addEventListener("click", async () => {
     if (!seleccion.length) {
-      resultado.className = "resultado";
+      resultado.className = "resultado aviso";
       resultado.textContent = textos.nadaSeleccionado;
       return;
     }
-    if (radioOriginal.checked && !window.confirm(textos.confirmarOriginal)) return;
-    recuperar.disabled = true;
+    if (radioOriginal.checked && !(await confirmarSiNo({
+      titulo: textos.restaurarOriginalTitulo,
+      texto: textos.confirmarOriginal,
+      aceptar: textos.restaurarOriginalBoton,
+      peligro: true
+    }))) return;
+    trabajando = true;
+    pintarResumen();
+    cancelarRestaurar.hidden = false;
+    cancelarRestaurar.disabled = false;
+    resultado.className = "resultado";
     resultado.textContent = textos.restaurando;
     const respuesta = await fetch("/api/v1/restore", {
       method: "POST",
@@ -257,11 +441,13 @@ function pintarRestaurar() {
         overwrite: caja.checked
       })
     });
-    const cuerpo = await respuesta.json().catch(() => ({}));
+    const cuerpoRespuesta = await respuesta.json().catch(() => ({}));
     if (!respuesta.ok) {
-      recuperar.disabled = false;
-      resultado.className = "resultado";
-      resultado.textContent = (cuerpo.fields || [cuerpo.error || textos.error]).join(" ");
+      trabajando = false;
+      pintarResumen();
+      cancelarRestaurar.hidden = true;
+      resultado.className = "resultado aviso";
+      resultado.textContent = (cuerpoRespuesta.fields || [cuerpoRespuesta.error || textos.error]).join(" ");
       return;
     }
     vigilar();
@@ -277,12 +463,22 @@ function pintarRestaurar() {
       setTimeout(vigilar, 1000);
       return;
     }
-    recuperar.disabled = false;
+    trabajando = false;
+    pintarResumen();
+    cancelarRestaurar.hidden = true;
     if (estado.restore) {
-      resultado.className = estado.restore.status === "success" ? "resultado aviso-ok" : "resultado";
+      resultado.className = estado.restore.status === "success" ? "resultado aviso-ok" : "resultado aviso";
       resultado.textContent = estado.restore.message + (estado.restore.target ? " " + estado.restore.target : "");
     }
   }
+
+  modoOriginal();
+  pintarResumen();
+}
+
+// Quien busca escribe "informe", no "*informe*": se busca por parte del nombre sin pedirle comodines.
+function patronBusqueda(texto) {
+  return /[*?\[]/.test(texto) ? texto : "*" + texto + "*";
 }
 
 function diasDesde(iso) {

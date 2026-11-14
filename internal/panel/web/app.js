@@ -44,10 +44,13 @@ function nombreDestino(destino) {
   if (!ruta) return textos.desconocido;
   if (ruta.startsWith("\\\\")) return ruta;
   const letra = /^[A-Za-z]:/.test(ruta) ? ruta.slice(0, 2).toUpperCase() : "";
-  const etiqueta = destino.label || nombreCarpeta(ruta);
-  const tipo = destino.kind === "removable" ? "Disco USB" : (destino.kind === "remote" ? "Unidad de red" : "Disco");
-  if (letra && etiqueta) return tipo + " «" + etiqueta + "» (" + letra + ")";
-  return ruta;
+  const tipo = destino.kind === "removable" ? textos.discoUsb : (destino.kind === "remote" ? textos.unidadRed : textos.discoLocal);
+  if (!letra) return ruta;
+  return destino.label ? tipo + " «" + destino.label + "» (" + letra + ")" : tipo + " (" + letra + ")";
+}
+
+function numeroCarpetas(n) {
+  return n === 1 ? textos.carpetasUna : textos.carpetasNumero.replace("{n}", String(n));
 }
 
 function nombreCarpeta(ruta) {
@@ -111,6 +114,7 @@ function fraseEstado(estado) {
 }
 
 function pintar(estado) {
+  document.getElementById("pantalla-inicio").classList.remove("esqueleto");
   const nivel = estado.level || "red";
   const enCurso = estado.activity === "backup" || estado.activity === "restore" || estado.activity === "verify";
   const luz = document.getElementById("semaforo");
@@ -293,23 +297,34 @@ function mostrarAviso(mensaje) {
 }
 
 async function accion(ruta) {
-  if (ruta.endsWith("/cancel") && !window.confirm(textos.confirmarCancelar)) return;
+  if (ruta.endsWith("/cancel") && !(await confirmarSiNo({
+    titulo: textos.cancelarCopiaTitulo,
+    texto: textos.confirmarCancelar,
+    aceptar: textos.cancelarCopiaBoton,
+    cancelar: textos.seguirCopiando,
+    peligro: true
+  }))) return;
   mostrarAviso("");
+  const botones = ["copiar", "verificar"].map((id) => document.getElementById(id));
+  botones.forEach((boton) => { boton.disabled = true; });
   const respuesta = await fetch(ruta, {
     method: "POST",
     headers: { "X-CSRF-Token": csrf }
   });
   const cuerpo = await respuesta.json().catch(() => ({}));
+  botones.forEach((boton) => { boton.disabled = false; });
   if (!respuesta.ok) {
     mostrarAviso(cuerpo.error || textos.error);
     return;
   }
+  if (ruta.endsWith("/backup")) mostrarToast(textos.copiaIniciada, true);
+  if (ruta.endsWith("/verify")) mostrarToast(textos.comprobacionIniciada, true);
   const estado = await fetch("/api/v1/status");
   if (estado.ok) pintar(await estado.json());
 }
 
 async function cargar() {
-  texto("marca", textos.marca);
+  document.getElementById("pantalla-inicio").classList.add("esqueleto");
   texto("salir", textos.ocultarSesion);
   texto("titulo-inicio", textos.menu.inicio);
   texto("ayuda-inicio", textos.ayudaInicio);
@@ -370,7 +385,7 @@ async function cargar() {
     if (configuracion.ok) {
       const cfg = await configuracion.json();
       const fuentes = cfg.sources || [];
-      texto("seleccion-texto", textos.carpetasNumero.replace("{n}", String(fuentes.length)));
+      texto("seleccion-texto", numeroCarpetas(fuentes.length));
       texto("seleccion-nombres", fuentes.map(nombreCarpeta).join(", "));
       const peso = await fetch("/api/v1/size", {
         method: "POST",
@@ -379,7 +394,7 @@ async function cargar() {
       });
       if (peso.ok) {
         const cuerpo = await peso.json();
-        if (cuerpo.bytes) texto("seleccion-texto", textos.carpetasNumero.replace("{n}", String(fuentes.length)) + " · " + tamano(cuerpo.bytes));
+        if (cuerpo.bytes) texto("seleccion-texto", numeroCarpetas(fuentes.length) + " · " + tamano(cuerpo.bytes));
       }
     }
   } else {
@@ -389,9 +404,14 @@ async function cargar() {
 
   const estado = await fetch("/api/v1/status");
   if (estado.ok) pintar(await estado.json());
-  else texto("nivel", textos.error);
+  else {
+    document.getElementById("pantalla-inicio").classList.remove("esqueleto");
+    texto("nivel", textos.error);
+  }
 
   const fuente = new EventSource("/api/v1/events");
+  // Si el canal en directo se corta, comprobar la sesión: si ha caducado, se avisa una sola vez.
+  fuente.onerror = () => { fetch("/api/v1/session").catch(() => {}); };
   fuente.onmessage = (evento) => {
     try {
       const data = JSON.parse(evento.data);

@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -204,8 +205,10 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /restaurar.js", s.handleAsset)
 	mux.HandleFunc("GET /ajustes.js", s.handleAsset)
 	mux.HandleFunc("GET /estilo.css", s.handleAsset)
+	mux.HandleFunc("GET /fuentes/{nombre}", s.handleFont)
 	mux.HandleFunc("GET /favicon.ico", s.handlePublicAsset)
 	mux.HandleFunc("GET /marca.svg", s.handlePublicAsset)
+	mux.HandleFunc("GET /marca-completa.svg", s.handlePublicAsset)
 	mux.HandleFunc("GET /api/v1/session", s.handleSession)
 	mux.HandleFunc("GET /api/v1/status", s.handleStatus)
 	mux.HandleFunc("GET /api/v1/events", s.handleEvents)
@@ -300,6 +303,38 @@ func (s *Server) handleAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimPrefix(r.URL.Path, "/")
 	s.writeAsset(w, "web/"+name)
+}
+
+// fuentesPermitidas son las únicas fuentes que se sirven: Inter, subconjunto latino, licencia OFL.
+var fuentesPermitidas = map[string]bool{
+	"inter-latin-400-normal.woff2": true,
+	"inter-latin-500-normal.woff2": true,
+	"inter-latin-600-normal.woff2": true,
+	"inter-latin-700-normal.woff2": true,
+}
+
+// handleFont sirve las fuentes incrustadas. Exige sesión como el resto del panel
+// y solo admite los nombres de la lista cerrada.
+func (s *Server) handleFont(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.sessionFrom(r); !ok {
+		http.Error(w, "Hace falta una sesión.", http.StatusUnauthorized)
+		return
+	}
+	name := r.PathValue("nombre")
+	if !fuentesPermitidas[name] {
+		http.Error(w, "No se encontró la página.", http.StatusNotFound)
+		return
+	}
+	body, err := fs.ReadFile(webFS, "web/fuentes/"+name)
+	if err != nil {
+		http.Error(w, "No se encontró la página.", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "font/woff2")
+	// El nombre del fichero lleva la versión de la fuente: se puede guardar mucho tiempo.
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write(body)
 }
 
 func (s *Server) writeAsset(w http.ResponseWriter, name string) {
@@ -621,7 +656,63 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	body, total, err := pageHistory(body, r.URL.Query().Get("limit"), r.URL.Query().Get("offset"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if total >= 0 {
+		w.Header().Set("X-Total-Count", strconv.Itoa(total))
+	}
 	writeJSON(w, http.StatusOK, body)
+}
+
+// pageHistory recorta la lista si se pide con limit (y, opcionalmente, offset).
+// Sin limit devuelve la lista entera, igual que siempre. total es el número de ejecuciones
+// que cumplen el filtro, o -1 si la respuesta no es una lista.
+func pageHistory(body any, limitText, offsetText string) (any, int, error) {
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return body, -1, nil
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return body, -1, nil
+	}
+	total := len(items)
+	limitText = strings.TrimSpace(limitText)
+	offsetText = strings.TrimSpace(offsetText)
+	if limitText == "" && offsetText == "" {
+		return body, total, nil
+	}
+	offset := 0
+	if offsetText != "" {
+		n, err := strconv.Atoi(offsetText)
+		if err != nil || n < 0 {
+			return nil, 0, errors.New("el desplazamiento no es válido")
+		}
+		offset = n
+	}
+	limit := total
+	if limitText != "" {
+		n, err := strconv.Atoi(limitText)
+		if err != nil || n < 1 || n > 500 {
+			return nil, 0, errors.New("el límite no es válido")
+		}
+		limit = n
+	}
+	if offset > total {
+		offset = total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	page := items[offset:end]
+	if page == nil {
+		page = []json.RawMessage{}
+	}
+	return page, total, nil
 }
 
 func (s *Server) handleHistoryItem(w http.ResponseWriter, r *http.Request) {

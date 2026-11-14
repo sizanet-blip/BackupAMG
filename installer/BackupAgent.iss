@@ -27,6 +27,9 @@ MinVersion=10.0
 UninstallDisplayName={#MyAppName}
 SetupLogging=yes
 LicenseFile=..\docs\THIRD_PARTY_LICENSES.md
+; Icono del instalador y del desinstalador: el logotipo de BackupAMG.
+SetupIconFile=..\assets\branding\backupamg.ico
+UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
