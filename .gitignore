@@ -1,0 +1,6 @@
+# Binarios generados y restic.exe (se distribuye junto al agente, no se versiona)
+/bin/
+*.exe
+
+# Logs de pruebas locales
+*.log
