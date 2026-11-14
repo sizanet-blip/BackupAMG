@@ -217,6 +217,11 @@ func (l *liveJob) runRestore(parent context.Context, logger interface {
 		}
 		defer os.RemoveAll(temp)
 		if _, err := restic.Restore(ctx, exe, cfg.Repository.Path, password, job.Snapshot, temp, job.Paths, true, onStatus); err != nil {
+			if ctx.Err() != nil {
+				l.setRestore(cancelledRestore(job.Mode, job.Target, 0))
+				logger.Info("Recuperación cancelada por el usuario", "mode", job.Mode)
+				return
+			}
 			l.setRestore(status.RestoreResult{Status: "failed", Target: job.Target, Message: err.Error(), Errors: []string{err.Error()}})
 			logger.Error("La recuperación no se ha completado", "error", err.Error())
 			return
@@ -227,6 +232,11 @@ func (l *liveJob) runRestore(parent context.Context, logger interface {
 		return
 	}
 	result, err := restic.Restore(ctx, exe, cfg.Repository.Path, password, job.Snapshot, job.Target, job.Paths, false, onStatus)
+	if ctx.Err() != nil {
+		l.setRestore(cancelledRestore(job.Mode, job.Target, result.Files))
+		logger.Info("Recuperación cancelada por el usuario", "mode", job.Mode, "files", result.Files, "target", job.Target)
+		return
+	}
 	if err != nil && result.Files == 0 {
 		l.setRestore(status.RestoreResult{Status: "failed", Target: job.Target, Message: err.Error(), Errors: []string{err.Error()}})
 		logger.Error("La recuperación no se ha completado", "error", err.Error())
@@ -248,6 +258,25 @@ func (l *liveJob) setRestore(result status.RestoreResult) {
 	l.restore = &result
 	l.mu.Unlock()
 	l.publish()
+}
+
+// cancelledRestore explica qué ha pasado cuando se cancela una recuperación.
+// En la ubicación original no se cambia nada, porque primero se recupera a una carpeta temporal.
+// En otra carpeta puede haber quedado algún fichero a medias, y se avisa.
+func cancelledRestore(mode, target string, files int) status.RestoreResult {
+	if mode == "original" {
+		return status.RestoreResult{
+			Status:  "warning",
+			Target:  "ubicación original",
+			Message: "La recuperación se ha cancelado. No se ha cambiado nada en su ubicación original.",
+			Errors:  []string{},
+		}
+	}
+	message := "La recuperación se ha cancelado. En la carpeta puede haber quedado una parte de los archivos, y el último puede estar incompleto. Si no los necesitas, borra la carpeta."
+	if files > 0 {
+		message = fmt.Sprintf("La recuperación se ha cancelado. Se habían recuperado %d archivos, y el último puede haber quedado incompleto. Si no los necesitas, borra la carpeta.", files)
+	}
+	return status.RestoreResult{Status: "warning", Files: files, Target: target, Message: message, Errors: []string{}}
 }
 
 func outcome(target string, files, renamed, skipped int, errs []string) status.RestoreResult {

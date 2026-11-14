@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -204,8 +205,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /restaurar.js", s.handleAsset)
 	mux.HandleFunc("GET /ajustes.js", s.handleAsset)
 	mux.HandleFunc("GET /estilo.css", s.handleAsset)
+	mux.HandleFunc("GET /fuentes/{nombre}", s.handleFont)
 	mux.HandleFunc("GET /favicon.ico", s.handlePublicAsset)
 	mux.HandleFunc("GET /marca.svg", s.handlePublicAsset)
+	mux.HandleFunc("GET /marca-completa.svg", s.handlePublicAsset)
+	mux.HandleFunc("GET /marca-barra.svg", s.handlePublicAsset)
 	mux.HandleFunc("GET /api/v1/session", s.handleSession)
 	mux.HandleFunc("GET /api/v1/status", s.handleStatus)
 	mux.HandleFunc("GET /api/v1/events", s.handleEvents)
@@ -300,6 +304,38 @@ func (s *Server) handleAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimPrefix(r.URL.Path, "/")
 	s.writeAsset(w, "web/"+name)
+}
+
+// fuentesPermitidas son las únicas fuentes que se sirven: Inter, subconjunto latino, licencia OFL.
+var fuentesPermitidas = map[string]bool{
+	"inter-latin-400-normal.woff2": true,
+	"inter-latin-500-normal.woff2": true,
+	"inter-latin-600-normal.woff2": true,
+	"inter-latin-700-normal.woff2": true,
+}
+
+// handleFont sirve las fuentes incrustadas. Exige sesión como el resto del panel
+// y solo admite los nombres de la lista cerrada.
+func (s *Server) handleFont(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.sessionFrom(r); !ok {
+		http.Error(w, "Hace falta una sesión.", http.StatusUnauthorized)
+		return
+	}
+	name := r.PathValue("nombre")
+	if !fuentesPermitidas[name] {
+		http.Error(w, "No se encontró la página.", http.StatusNotFound)
+		return
+	}
+	body, err := fs.ReadFile(webFS, "web/fuentes/"+name)
+	if err != nil {
+		http.Error(w, "No se encontró la página.", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "font/woff2")
+	// El nombre del fichero lleva la versión de la fuente: se puede guardar mucho tiempo.
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write(body)
 }
 
 func (s *Server) writeAsset(w http.ResponseWriter, name string) {
@@ -621,7 +657,63 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	body, total, err := pageHistory(body, r.URL.Query().Get("limit"), r.URL.Query().Get("offset"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if total >= 0 {
+		w.Header().Set("X-Total-Count", strconv.Itoa(total))
+	}
 	writeJSON(w, http.StatusOK, body)
+}
+
+// pageHistory recorta la lista si se pide con limit (y, opcionalmente, offset).
+// Sin limit devuelve la lista entera, igual que siempre. total es el número de ejecuciones
+// que cumplen el filtro, o -1 si la respuesta no es una lista.
+func pageHistory(body any, limitText, offsetText string) (any, int, error) {
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return body, -1, nil
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return body, -1, nil
+	}
+	total := len(items)
+	limitText = strings.TrimSpace(limitText)
+	offsetText = strings.TrimSpace(offsetText)
+	if limitText == "" && offsetText == "" {
+		return body, total, nil
+	}
+	offset := 0
+	if offsetText != "" {
+		n, err := strconv.Atoi(offsetText)
+		if err != nil || n < 0 {
+			return nil, 0, errors.New("el desplazamiento no es válido")
+		}
+		offset = n
+	}
+	limit := total
+	if limitText != "" {
+		n, err := strconv.Atoi(limitText)
+		if err != nil || n < 1 || n > 500 {
+			return nil, 0, errors.New("el límite no es válido")
+		}
+		limit = n
+	}
+	if offset > total {
+		offset = total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	page := items[offset:end]
+	if page == nil {
+		page = []json.RawMessage{}
+	}
+	return page, total, nil
 }
 
 func (s *Server) handleHistoryItem(w http.ResponseWriter, r *http.Request) {
@@ -875,12 +967,14 @@ func (s *Server) handleSize(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"bytes": total, "complete": complete})
 }
 
-func (s *Server) pipeResult(user string, role Role, op string) any {
+func (s *Server) pipeResult(user string, role Role, op, screen string) any {
 	switch op {
 	case "token":
 		token := s.IssueToken(user, role)
 		s.log.Info("Token del panel emitido", "user", user, "role", role)
 		return map[string]any{"ok": true, "url": s.LoginURL(token), "user": user, "role": role}
+	case "show":
+		return s.pipeShow(user, role, screen)
 	case "status":
 		s.mu.Lock()
 		fn := s.hooks.Status
@@ -900,6 +994,34 @@ func (s *Server) pipeResult(user string, role Role, op string) any {
 	default:
 		return map[string]any{"ok": false, "error": "Petición no reconocida."}
 	}
+}
+
+func (s *Server) pipeShow(user string, role Role, screen string) any {
+	screen = strings.TrimSpace(screen)
+	switch screen {
+	case "", "historial", "restaurar", "ajustes", "copiar", "inicio":
+	default:
+		return map[string]any{"ok": false, "error": "Pantalla no reconocida."}
+	}
+	s.mu.Lock()
+	liveSSE := len(s.subs) > 0
+	s.mu.Unlock()
+	if liveSSE && screen != "" && screen != "inicio" {
+		raw, _ := json.Marshal(map[string]string{"navigate": screen})
+		s.broadcast(raw)
+	}
+	// Solo reutilizar si hay un cliente SSE real (pestaña viva).
+	// Una sesión huérfana sin navegador hacía que la bandeja no abriera nada.
+	if liveSSE {
+		return map[string]any{"ok": true, "reused": true, "user": user, "role": role}
+	}
+	token := s.IssueToken(user, role)
+	s.log.Info("Token del panel emitido", "user", user, "role", role)
+	url := s.LoginURL(token)
+	if screen == "historial" || screen == "restaurar" || screen == "ajustes" || screen == "copiar" {
+		url += "&next=" + screen
+	}
+	return map[string]any{"ok": true, "reused": false, "url": url, "user": user, "role": role}
 }
 
 func (s *Server) handleAdminProbe(w http.ResponseWriter, r *http.Request) {

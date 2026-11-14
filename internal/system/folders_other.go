@@ -13,6 +13,10 @@ type Shortcut struct {
 type Dir struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
+	// Solo en las unidades, y solo si la unidad responde a tiempo.
+	Label      string `json:"label,omitempty"`
+	FreeBytes  int64  `json:"free_bytes,omitempty"`
+	TotalBytes int64  `json:"total_bytes,omitempty"`
 }
 
 func Shortcuts() []Shortcut { return nil }

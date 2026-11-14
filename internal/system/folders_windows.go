@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/windows"
 )
@@ -23,6 +24,10 @@ type Shortcut struct {
 type Dir struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
+	// Solo en las unidades, y solo si la unidad responde a tiempo.
+	Label      string `json:"label,omitempty"`
+	FreeBytes  int64  `json:"free_bytes,omitempty"`
+	TotalBytes int64  `json:"total_bytes,omitempty"`
 }
 
 var knownFolders = []struct {
@@ -153,7 +158,54 @@ func drives() []Dir {
 		}
 		out = append(out, Dir{Name: path, Path: path})
 	}
+	addDriveInfo(out, driveInfoTimeout, probeDrive)
 	return out
+}
+
+// driveInfoTimeout es lo máximo que se espera a que las unidades cuenten su nombre y su espacio.
+const driveInfoTimeout = 1500 * time.Millisecond
+
+type driveData struct {
+	label       string
+	free, total int64
+}
+
+func probeDrive(path string) (driveData, bool) {
+	free, total, err := DiskSpace(path)
+	if err != nil {
+		return driveData{}, false
+	}
+	return driveData{label: VolumeLabel(path), free: free, total: total}, true
+}
+
+// addDriveInfo rellena nombre y espacio de cada unidad. Las consulta a la vez y, si alguna no responde
+// a tiempo (USB desconectándose, red lenta), la deja sin esos datos: la lista nunca se bloquea.
+func addDriveInfo(dirs []Dir, timeout time.Duration, probe func(string) (driveData, bool)) {
+	type result struct {
+		i  int
+		d  driveData
+		ok bool
+	}
+	ch := make(chan result, len(dirs))
+	for i, dir := range dirs {
+		go func(i int, path string) {
+			d, ok := probe(path)
+			ch <- result{i, d, ok}
+		}(i, dir.Path)
+	}
+	limit := time.After(timeout)
+	for range dirs {
+		select {
+		case r := <-ch:
+			if r.ok {
+				dirs[r.i].Label = r.d.label
+				dirs[r.i].FreeBytes = r.d.free
+				dirs[r.i].TotalBytes = r.d.total
+			}
+		case <-limit:
+			return
+		}
+	}
 }
 
 var errNotFolder = errFolder("esa ruta no es una carpeta de este equipo")

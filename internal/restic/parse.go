@@ -2,7 +2,10 @@ package restic
 
 import (
 	"encoding/json"
+	"fmt"
+	"regexp"
 	"strings"
+	"time"
 )
 
 // Status es un avance de la copia. PercentDone va de 0 a 1.
@@ -180,6 +183,81 @@ func cleanResticMessage(message string) string {
 		message = strings.TrimPrefix(message, prefix)
 	}
 	return strings.TrimSpace(message)
+}
+
+// PlainFailure deja en claro cualquier aviso técnico, de copia, comprobación o recuperación.
+// Una frase ya escrita para la pantalla se conserva. El texto de restic no se muestra.
+func PlainFailure(message string) string {
+	if !technicalFailure(message) {
+		return message
+	}
+	if plain := failureSituation(message, 0); plain != "" {
+		return plain
+	}
+	return "No se ha podido completar."
+}
+
+func failureSituation(message string, numErrors int) string {
+	lower := strings.ToLower(message)
+	switch {
+	case strings.Contains(lower, "already locked") || strings.Contains(lower, "unable to create lock") || embeddedCode(message) == 11:
+		if when := lockSince(message); when != "" {
+			return "Otra tarea de este equipo tiene las copias ocupadas desde " + when + "."
+		}
+		return "Otra tarea de este equipo tiene las copias ocupadas."
+	case strings.Contains(lower, "wrong password") || strings.Contains(lower, "ciphertext verification failed") || embeddedCode(message) == 12:
+		return "La contraseña de las copias no es correcta."
+	case strings.Contains(lower, "does not exist") || strings.Contains(lower, "no such file") || strings.Contains(lower, "unable to open") || embeddedCode(message) == 10:
+		return "El destino no está disponible. Conecta el disco o comprueba la ruta."
+	case numErrors > 1:
+		return fmt.Sprintf("Las copias tienen %d errores.", numErrors)
+	case numErrors == 1 || strings.Contains(lower, "errores en el repositorio"):
+		return "Las copias tienen errores."
+	default:
+		return ""
+	}
+}
+
+func technicalFailure(message string) bool {
+	lower := strings.ToLower(message)
+	markers := []string{"{", "fatal:", "exit_error", "unable to", "already locked", "wrong password", "ciphertext", "does not exist", "repository"}
+	for _, marker := range markers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+var embeddedExitCode = regexp.MustCompile(`"code"\s*:\s*(\d+)`)
+
+func embeddedCode(message string) int {
+	found := embeddedExitCode.FindStringSubmatch(message)
+	if found == nil {
+		return 0
+	}
+	n := 0
+	for _, c := range found[1] {
+		n = n*10 + int(c-'0')
+	}
+	return n
+}
+
+var lockCreated = regexp.MustCompile(`lock was created at (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})`)
+
+func lockSince(message string) string {
+	found := lockCreated.FindStringSubmatch(message)
+	if found == nil {
+		return ""
+	}
+	when, err := time.ParseInLocation("2006-01-02 15:04", found[1]+" "+found[2], time.Local)
+	if err != nil {
+		return "las " + found[2]
+	}
+	if when.Format("2006-01-02") == time.Now().In(time.Local).Format("2006-01-02") {
+		return "las " + found[2]
+	}
+	return "el " + when.Format("02/01") + " a las " + found[2]
 }
 
 func userMessage(exitCode int, resticMessage string, vssFailed bool) string {

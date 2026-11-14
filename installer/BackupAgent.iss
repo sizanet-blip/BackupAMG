@@ -27,6 +27,9 @@ MinVersion=10.0
 UninstallDisplayName={#MyAppName}
 SetupLogging=yes
 LicenseFile=..\docs\THIRD_PARTY_LICENSES.md
+; Icono del instalador y del desinstalador: el logotipo de BackupAMG.
+SetupIconFile=..\assets\branding\backupamg.ico
+UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
@@ -44,7 +47,10 @@ Name: "{commonappdata}\{#MyAppName}\reports"; Flags: uninsneveruninstall
 Name: "{commonappdata}\{#MyAppName}\logs"; Flags: uninsneveruninstall
 
 [Registry]
+; El icono arranca solo, con la ruta del ejecutable. No hay PowerShell ni un proceso oculto.
 Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: """{app}\{#MyTrayExeName}"""; Flags: uninsdeletevalue
+; Borra el arranque oculto de las pruebas, si todavía estuviera en el usuario.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "BackupAMG"; Flags: dontcreatekey deletevalue
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#MyTrayExeName}"; Flags: runhidden waituntilterminated; RunOnceId: "StopBackupAgentTray"

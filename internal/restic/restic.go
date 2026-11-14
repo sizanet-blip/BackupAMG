@@ -32,6 +32,10 @@ func Executable() (string, error) {
 		return "", fmt.Errorf("no se pudo localizar el agente: %w", err)
 	}
 	path := filepath.Join(filepath.Dir(self), "restic.exe")
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("no se pudo localizar restic.exe: %w", err)
+	}
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {
 		return "", fmt.Errorf("no se encontró restic.exe junto al agente (%s)", path)
@@ -41,7 +45,7 @@ func Executable() (string, error) {
 
 // Version ejecuta `restic version` y devuelve el número, por ejemplo "0.19.1".
 func Version(ctx context.Context, exe string) (string, error) {
-	cmd := exec.CommandContext(ctx, exe, "version")
+	cmd := command(ctx, exe, "version")
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("no se pudo consultar la versión de restic: %w", err)
@@ -209,8 +213,19 @@ func backupArgs(req BackupRequest) []string {
 	return append(args, req.Sources...)
 }
 
-func run(ctx context.Context, exe, password, repo string, args []string, onLine func(Line)) (int, string, string, error) {
+// command arranca restic.exe desde su propia carpeta.
+// No se oculta la ventana: un proceso de consola escondido es una señal típica para un antivirus.
+func command(ctx context.Context, exe string, args ...string) *exec.Cmd {
+	if abs, err := filepath.Abs(exe); err == nil {
+		exe = abs
+	}
 	cmd := exec.CommandContext(ctx, exe, args...)
+	cmd.Dir = filepath.Dir(exe)
+	return cmd
+}
+
+func run(ctx context.Context, exe, password, repo string, args []string, onLine func(Line)) (int, string, string, error) {
+	cmd := command(ctx, exe, args...)
 	cmd.Env = childEnv(os.Environ(), password, repo)
 	cmd.WaitDelay = 3 * time.Second
 	stdout, err := cmd.StdoutPipe()

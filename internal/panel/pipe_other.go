@@ -16,6 +16,11 @@ func RequestToken() (string, string, Role, error) {
 	return "", "", "", fmt.Errorf("el panel solo está disponible en Windows")
 }
 
+// RequestShow no está disponible fuera de Windows.
+func RequestShow(string) (bool, string, string, Role, error) {
+	return false, "", "", "", fmt.Errorf("el panel solo está disponible en Windows")
+}
+
 // RequestStatus no está disponible fuera de Windows.
 func RequestStatus() (status.View, error) {
 	return status.View{}, fmt.Errorf("el panel solo está disponible en Windows")

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -56,12 +55,22 @@ func startPanel(ctx context.Context, logger *logging.Logger, port int) {
 }
 
 func openPanel() int {
-	url, user, role, err := panel.RequestToken()
+	reused, url, user, role, err := panel.RequestShow("")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
 	}
-	_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	if reused {
+		system.FocusBrowserForPanel()
+		fmt.Fprintln(os.Stderr, "El panel ya estaba abierto; se ha traído al frente.")
+		return 0
+	}
+	if url == "" {
+		return 0
+	}
+	if err := system.OpenURL(url); err != nil {
+		fmt.Fprintf(os.Stderr, "No se pudo abrir el navegador: %v\n", err)
+	}
 	fmt.Fprintf(os.Stderr, "Abriendo el panel como %s (%s).\nSi el navegador no se abre, copia esta dirección antes de un minuto:\n%s\n", user, role, url)
 	return 0
 }

@@ -13,6 +13,10 @@ type noticeOptions struct {
 	success  bool
 }
 
+// avisoAccion cierra cada notificación: pulsarla abre el panel. Un aviso del icono de Windows
+// no admite botones, así que la acción es el propio aviso.
+const avisoAccion = " Pulsa aquí para abrir el panel."
+
 func backupNotice(prev *status.View, next status.View, opt noticeOptions) (title, body string, ok bool) {
 	if prev == nil || next.LastBackup == nil {
 		return "", "", false
@@ -20,25 +24,38 @@ func backupNotice(prev *status.View, next status.View, opt noticeOptions) (title
 	if prev.LastBackup != nil && prev.LastBackup.FinishedAt == next.LastBackup.FinishedAt {
 		return "", "", false
 	}
-	if !next.Destination.Connected {
-		return "Destino no conectado", "La copia no encuentra el disco o la carpeta de destino.", true
-	}
 	switch next.LastBackup.Status {
 	case "failed":
-		return "La copia ha fallado", fallback(next.LastBackup.Message, "La última copia no se ha completado."), true
+		const titulo = "No se ha podido hacer la copia"
+		if !next.Destination.Connected {
+			if next.Destination.Kind == "removable" {
+				return titulo, "El disco USB no está conectado. Conéctalo y vuelve a intentarlo." + avisoAccion, true
+			}
+			return titulo, "El destino de las copias no está disponible. Comprueba que está conectado." + avisoAccion, true
+		}
+		return titulo, limitar(fallback(next.LastBackup.Message, "Abre el panel para ver qué ha pasado."), 170) + avisoAccion, true
 	case "warning":
 		if !opt.warnings {
 			return "", "", false
 		}
-		return "La copia terminó con avisos", fallback(next.LastBackup.Message, "Algunos ficheros no se pudieron leer."), true
+		return "La copia terminó con avisos", limitar(fallback(next.LastBackup.Message, "Algunos archivos no se pudieron copiar."), 170) + avisoAccion, true
 	case "success":
 		if !opt.success {
 			return "", "", false
 		}
-		return "Copia correcta", fallback(next.LastBackup.Message, "La copia se ha completado."), true
+		return "Copia correcta", "Tus archivos están protegidos.", true
 	default:
 		return "", "", false
 	}
+}
+
+// limitar recorta un texto largo: el aviso de Windows admite unos 250 caracteres.
+func limitar(texto string, max int) string {
+	runas := []rune(texto)
+	if len(runas) <= max {
+		return texto
+	}
+	return string(runas[:max-1]) + "…"
 }
 
 func fallback(message, otherwise string) string {

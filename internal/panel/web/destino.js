@@ -9,6 +9,7 @@ function pintarDestino() {
   const ayuda = document.createElement("p");
   ayuda.className = "nota";
   const campo = document.createElement("label");
+  campo.className = "campo-columna";
   campo.append(document.createTextNode(textos.rutaDestino));
   const ruta = document.createElement("input");
   ruta.type = "text";
@@ -19,8 +20,9 @@ function pintarDestino() {
   const ahora = document.createElement("p");
   ahora.className = "nota";
   ahora.hidden = true;
-  const explorar = document.createElement("div");
-  explorar.className = "lista";
+  let rutaGuardada = "";
+  const explorador = crearExplorador({ modo: "elegir", alElegir: (carpeta) => { ruta.value = carpeta; alCambiarRuta(); } });
+  const explorar = explorador.raiz;
   const resultado = document.createElement("p");
   resultado.className = "resultado";
   const probar = document.createElement("button");
@@ -38,17 +40,49 @@ function pintarDestino() {
   clave.textContent = textos.cambiarClave;
   const nueva = secreto(textos.nuevaClave);
   const repite = secreto(textos.repiteClave);
+  nueva.etiqueta.classList.add("campo-columna");
+  repite.etiqueta.classList.add("campo-columna");
   const casilla = document.createElement("label");
   const marca = document.createElement("input");
   marca.type = "checkbox";
   casilla.append(marca, document.createTextNode(textos.guardadaClave));
   const cambiar = document.createElement("button");
   cambiar.type = "button";
+  cambiar.className = "secundario";
   cambiar.textContent = textos.cambiarClave;
   const resultadoClave = document.createElement("p");
   resultadoClave.className = "resultado";
 
-  raiz.append(titulo, tipo, ayuda, campo, notaDisco, ahora, explorar, probar, guardar, resultado, clave, aviso, nueva.etiqueta, repite.etiqueta, casilla, cambiar, resultadoClave);
+  tipo.className = "opciones-tipo";
+  const acciones = document.createElement("div");
+  acciones.className = "barra-filtros acciones-formulario";
+  const faltaDestino = notaFalta();
+  acciones.append(probar, guardar, faltaDestino);
+  const revisarDestino = exigir(guardar, faltaDestino, () => (ruta.value.trim() ? "" : textos.faltaDestino));
+  const alCambiarRuta = () => { revisarDestino(); probar.disabled = !ruta.value.trim(); };
+  ruta.addEventListener("input", alCambiarRuta);
+  const cajaDestino = document.createElement("article");
+  cajaDestino.className = "bloque";
+  const hDestino = document.createElement("h2");
+  hDestino.textContent = textos.tituloUbicacion;
+  cajaDestino.append(hDestino, tipo, ayuda, campo, notaDisco, ahora, explorar, acciones, resultado);
+  const cajaClave = document.createElement("article");
+  cajaClave.className = "bloque";
+  clave.textContent = textos.tituloClave;
+  const faltaClave = notaFalta();
+  const accionClave = document.createElement("div");
+  accionClave.className = "barra-filtros";
+  accionClave.append(cambiar, faltaClave);
+  const revisarClave = exigir(cambiar, faltaClave, () => {
+    if (!nueva.input.value) return textos.faltaClave;
+    if (nueva.input.value !== repite.input.value) return textos.noCoinciden + ".";
+    if (!marca.checked) return textos.faltaMarca;
+    return "";
+  });
+  [nueva.input, repite.input].forEach((campoClave) => campoClave.addEventListener("input", revisarClave));
+  marca.addEventListener("change", revisarClave);
+  cajaClave.append(clave, aviso, nueva.etiqueta, repite.etiqueta, casilla, accionClave, resultadoClave);
+  raiz.append(titulo, cajaDestino, cajaClave);
 
   function modo() {
     return red.input.checked ? "unc" : "local";
@@ -57,7 +91,7 @@ function pintarDestino() {
     const redActiva = modo() === "unc";
     ayuda.textContent = redActiva ? textos.ayudaRed : textos.ayudaDisco;
     explorar.hidden = redActiva;
-    if (!redActiva && !explorar.childElementCount) abrirCarpetaDestino("");
+    if (!redActiva) explorador.cargarSiHaceFalta();
   }
   local.input.addEventListener("change", pintarModo);
   red.input.addEventListener("change", pintarModo);
@@ -69,6 +103,8 @@ function pintarDestino() {
     }
     const datos = await respuesta.json();
     ruta.value = datos.path || "";
+    rutaGuardada = datos.path || "";
+    alCambiarRuta();
     if (datos.kind === "unc") red.input.checked = true;
     else local.input.checked = true;
     notaDisco.hidden = !datos.volume_id;
@@ -98,7 +134,21 @@ function pintarDestino() {
   });
 
   guardar.addEventListener("click", async () => {
+    const limpia = (valor) => String(valor || "").trim().replace(/[\\/]+$/, "").toLowerCase();
+    if (rutaGuardada && limpia(ruta.value) !== limpia(rutaGuardada)) {
+      const sigue = await confirmarSiNo({
+        titulo: textos.cambiarDestinoTitulo,
+        texto: textos.cambiarDestinoTexto.replace("{nueva}", ruta.value.trim()).replace("{anterior}", rutaGuardada),
+        aceptar: textos.cambiarDestinoBoton,
+        peligro: true
+      });
+      if (!sigue) return;
+    }
     guardar.disabled = true;
+    const textoGuardar = guardar.textContent;
+    guardar.textContent = textos.preparandoDestino;
+    resultado.className = "resultado";
+    resultado.textContent = "";
     const respuesta = await fetch("/api/v1/destination", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
@@ -106,16 +156,19 @@ function pintarDestino() {
     });
     const cuerpo = await respuesta.json().catch(() => ({}));
     guardar.disabled = false;
+    guardar.textContent = textoGuardar;
     if (!respuesta.ok) {
-      resultado.className = "resultado";
+      resultado.className = "resultado aviso";
       resultado.textContent = (cuerpo.fields || [cuerpo.error || textos.error]).join(" ");
       return;
     }
     resultado.className = "resultado aviso-ok";
     resultado.textContent = textos.guardado;
+    mostrarToast(textos.guardado, true);
     const otra = await fetch("/api/v1/destination");
     if (!otra.ok) return;
     const datos = await otra.json();
+    rutaGuardada = datos.path || "";
     notaDisco.hidden = !datos.volume_id;
     notaDisco.textContent = textos.discoId;
     if (datos.resolved && datos.resolved !== datos.path) {
@@ -127,6 +180,12 @@ function pintarDestino() {
   });
 
   cambiar.addEventListener("click", async () => {
+    if (!(await confirmarSiNo({
+      titulo: textos.cambiarClaveTitulo,
+      texto: textos.confirmarClave,
+      aceptar: textos.cambiarClaveBoton,
+      peligro: true
+    }))) return;
     cambiar.disabled = true;
     const respuesta = await fetch("/api/v1/password", {
       method: "POST",
@@ -143,38 +202,10 @@ function pintarDestino() {
     nueva.input.value = "";
     repite.input.value = "";
     marca.checked = false;
+    revisarClave();
     resultadoClave.className = "resultado aviso-ok";
     resultadoClave.textContent = textos.claveGuardada;
   });
-
-  async function abrirCarpetaDestino(path) {
-    explorar.replaceChildren();
-    const respuesta = await fetch("/api/v1/folders?path=" + encodeURIComponent(path));
-    if (!respuesta.ok) return;
-    const carpetas = await respuesta.json();
-    if (path) {
-      const usar = document.createElement("button");
-      usar.type = "button";
-      usar.className = "secundario";
-      usar.textContent = textos.usarCarpeta + " " + path;
-      usar.addEventListener("click", () => { ruta.value = path; });
-      const atras = document.createElement("button");
-      atras.type = "button";
-      atras.className = "secundario";
-      atras.textContent = textos.abrir;
-      const padre = path.replace(/[\\/][^\\/]+$/, "");
-      atras.addEventListener("click", () => abrirCarpetaDestino(padre.length < 3 ? "" : padre));
-      explorar.append(usar, atras);
-    }
-    (carpetas || []).forEach((carpeta) => {
-      const boton = document.createElement("button");
-      boton.type = "button";
-      boton.className = "secundario";
-      boton.textContent = carpeta.name || carpeta.path;
-      boton.addEventListener("click", () => abrirCarpetaDestino(carpeta.path));
-      explorar.append(boton);
-    });
-  }
 }
 
 function radio(valor, texto, marcado) {
@@ -190,6 +221,7 @@ function radio(valor, texto, marcado) {
 
 function secreto(texto) {
   const etiqueta = document.createElement("label");
+  etiqueta.className = "campo-columna";
   etiqueta.append(document.createTextNode(texto));
   const input = document.createElement("input");
   input.type = "password";

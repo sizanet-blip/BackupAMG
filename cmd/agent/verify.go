@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -81,7 +82,11 @@ func executeVerification(ctx context.Context, logger *slog.Logger, cfg *config.C
 		in.ResticVersion = version
 		in.Message = result.Message
 		if result.Status != restic.StatusSuccess {
-			in.Errors = []string{result.Message}
+			raw := strings.TrimSpace(result.Raw)
+			if raw == "" {
+				raw = result.Message
+			}
+			in.Errors = []string{raw}
 		}
 	}
 	rep := report.Build(in)
@@ -101,6 +106,38 @@ func executeVerification(ctx context.Context, logger *slog.Logger, cfg *config.C
 		return fmt.Errorf("%s", result.Message)
 	}
 	return nil
+}
+
+// verifyRunner es lo que lanza la verificación. Las pruebas lo sustituyen.
+var verifyRunner = executeVerification
+
+// verifyIfDue lanza la verificación periódica si ya toca según verify.every_days.
+// Devuelve true si la ha lanzado. No lo intenta si el destino no está conectado: así no se
+// llena el historial de verificaciones fallidas cada vez que el equipo arranca sin el disco.
+func verifyIfDue(ctx context.Context, logger *logging.Logger) bool {
+	cfg, password, exe, err := openRuntime()
+	if err != nil {
+		logger.Info("No se comprueba si toca verificar", "reason", err.Error())
+		return false
+	}
+	if !resticRepo(cfg.Repository.Path) {
+		logger.Info("La verificación periódica espera: el destino no está disponible o todavía no tiene copias")
+		return false
+	}
+	due, err := verificationDue(cfg, time.Now())
+	if err != nil {
+		logger.Error("No se pudo saber si toca verificar", "error", err.Error())
+		return false
+	}
+	if !due {
+		logger.Info("La verificación periódica no toca todavía", "every_days", cfg.Verify.EveryDays)
+		return false
+	}
+	logger.Info("Toca la verificación periódica", "every_days", cfg.Verify.EveryDays)
+	if err := verifyRunner(ctx, logger.Logger, cfg, password, exe, report.TriggerScheduled); err != nil {
+		logger.Error("La verificación no se ha completado", "error", err.Error())
+	}
+	return true
 }
 
 func verificationDue(cfg *config.Config, now time.Time) (bool, error) {

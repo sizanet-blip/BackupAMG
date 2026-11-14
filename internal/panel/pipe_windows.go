@@ -83,13 +83,14 @@ func (s *Server) handlePipe(handle windows.Handle) {
 		return
 	}
 	var req struct {
-		Op string `json:"op"`
+		Op     string `json:"op"`
+		Screen string `json:"screen"`
 	}
 	if json.Unmarshal(buf, &req) != nil {
 		writePipe(handle, map[string]any{"ok": false, "error": "Petición no reconocida."})
 		return
 	}
-	writePipe(handle, s.pipeResult(user, role, req.Op))
+	writePipe(handle, s.pipeResult(user, role, req.Op, req.Screen))
 }
 
 func writePipe(handle windows.Handle, body any) {
@@ -202,16 +203,26 @@ func impersonate(handle windows.Handle) error {
 
 // RequestToken pide al agente en marcha un enlace de un solo uso.
 func RequestToken() (url, user string, role Role, err error) {
-	resp, err := callPipe("token")
+	resp, err := callPipe(map[string]string{"op": "token"})
 	if err != nil {
 		return "", "", "", err
 	}
 	return resp.URL, resp.User, resp.Role, nil
 }
 
+// RequestShow reutiliza el panel ya abierto (SSE) o devuelve un enlace nuevo.
+// screen vacío abre el inicio; "historial" / "restaurar" navegan a esa pantalla.
+func RequestShow(screen string) (reused bool, url, user string, role Role, err error) {
+	resp, err := callPipe(map[string]string{"op": "show", "screen": screen})
+	if err != nil {
+		return false, "", "", "", err
+	}
+	return resp.Reused, resp.URL, resp.User, resp.Role, nil
+}
+
 // RequestStatus lee el semáforo por el canal de la bandeja.
 func RequestStatus() (status.View, error) {
-	resp, err := callPipe("status")
+	resp, err := callPipe(map[string]string{"op": "status"})
 	if err != nil {
 		return status.View{}, err
 	}
@@ -226,17 +237,17 @@ func RequestStatus() (status.View, error) {
 
 // RequestBackup pide una copia inmediata. No abre el panel.
 func RequestBackup() error {
-	_, err := callPipe("backup")
+	_, err := callPipe(map[string]string{"op": "backup"})
 	return err
 }
 
-func callPipe(op string) (pipeResponse, error) {
+func callPipe(args map[string]string) (pipeResponse, error) {
 	handle, err := dialPipe()
 	if err != nil {
 		return pipeResponse{}, fmt.Errorf("el agente no está en marcha. Ejecuta agent run o inicia el servicio: %w", err)
 	}
 	defer windows.CloseHandle(handle)
-	payload, err := json.Marshal(map[string]string{"op": op})
+	payload, err := json.Marshal(args)
 	if err != nil {
 		return pipeResponse{}, err
 	}
@@ -268,6 +279,7 @@ type pipeResponse struct {
 	Role   Role            `json:"role"`
 	Error  string          `json:"error"`
 	Status json.RawMessage `json:"status"`
+	Reused bool            `json:"reused"`
 }
 
 func dialPipe() (windows.Handle, error) {
