@@ -1,0 +1,55 @@
+# Configuración del agente de copias.
+# Cópiala a %ProgramData%\BackupAgent\config.yaml
+# (o a la carpeta de BACKUP_AGENT_DATA_DIR) y ajústala.
+
+agent:
+  # Nombre en los informes. Si se deja vacío, se usa el nombre del equipo.
+  name: "PC-OFICINA-01"
+
+backup:
+  sources:
+    - "C:\\Users\\Juan\\Documents"
+    - "C:\\Users\\Juan\\Desktop"
+  excludes:
+    - "*.tmp"
+    - "~$*"
+    - "**\\node_modules"
+    - "**\\AppData\\Local\\Temp"
+  # Incluye ficheros abiertos (Word, Excel, Outlook) mediante VSS.
+  use_vss: true
+
+repository:
+  # Disco local, USB o ruta UNC (\\servidor\recurso).
+  # El servicio corre como LocalSystem y no ve unidades mapeadas (Z:).
+  # En el servidor hay que dar permiso de escritura a la cuenta del equipo
+  # (DOMINIO\NOMBRE-PC$) o, si el recurso está en este mismo equipo, a SYSTEM.
+  path: "E:\\Copias"
+  # Opcional. El panel lo rellena en un disco para encontrarlo si Windows cambia la letra.
+  # volume_id: "\\\\?\\Volume{00000000-0000-0000-0000-000000000000}\\"
+  # La rellena «agent set-password». No escribas aquí la contraseña en claro.
+  # Si se pierde, restic no puede recuperarla y las copias quedan inservibles.
+  # Guárdala también fuera de este equipo, por ejemplo en un gestor de contraseñas.
+  password_encrypted: ""
+
+schedule:
+  times: ["13:30", "20:00"]
+  run_missed_on_startup: true
+  max_retries: 2
+  retry_delay_minutes: 15
+  # Días sin una copia correcta para marcar el estado en rojo.
+  stale_after_days: 2
+
+retention:
+  keep_daily: 7
+  keep_weekly: 4
+  keep_monthly: 12
+  prune: true
+
+verify:
+  every_days: 7
+  # Porcentaje (5%, 2.5%), fracción (1/7) o tamaño (10G, 500M).
+  read_data_subset: "5%"
+
+# Puerto del panel en este equipo. Solo escucha en 127.0.0.1.
+# panel:
+#   port: 47800
