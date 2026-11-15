@@ -57,6 +57,40 @@ func LogFile() string {
 	return filepath.Join(LogsDir(), "agent.log")
 }
 
+// TempDir es la carpeta de trabajo temporal del agente. Está dentro de la carpeta de datos
+// (protegida para SYSTEM y administradores) y no en la carpeta TEMP del sistema: ahí se guardan,
+// durante unos segundos, ficheros con contraseñas.
+func TempDir() string {
+	return filepath.Join(DataDir(), "tmp")
+}
+
+// MkdirTemp crea una carpeta nueva y vacía dentro de TempDir, con permisos restringidos.
+// Quien la pide debe borrarla al terminar.
+func MkdirTemp(prefix string) (string, error) {
+	root := TempDir()
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return "", fmt.Errorf("no se pudo crear la carpeta temporal %s: %w", root, err)
+	}
+	if !Overridden() {
+		if err := system.ProtectTree(root); err != nil {
+			return "", err
+		}
+	}
+	return os.MkdirTemp(root, prefix)
+}
+
+// CleanTemp borra lo que haya quedado en TempDir (por ejemplo, tras un apagado a mitad de un
+// cambio de contraseña). Solo se llama al arrancar el agente, cuando nada lo está usando.
+func CleanTemp() {
+	entries, err := os.ReadDir(TempDir())
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		_ = os.RemoveAll(filepath.Join(TempDir(), entry.Name()))
+	}
+}
+
 // Ensure crea las carpetas de datos si no existen.
 func Ensure() error {
 	dirs := []string{DataDir(), ReportsDir(), LogsDir()}

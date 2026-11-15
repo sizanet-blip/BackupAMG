@@ -53,3 +53,26 @@ func TestEnsureCreatesDirectories(t *testing.T) {
 		}
 	}
 }
+
+func TestTempDirLivesInsideTheDataDirAndIsCleaned(t *testing.T) {
+	data := t.TempDir()
+	t.Setenv("BACKUP_AGENT_DATA_DIR", data)
+	dir, err := MkdirTemp("ba-prueba-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(dir) != filepath.Join(data, "tmp") {
+		t.Fatalf("la carpeta temporal debe estar dentro de la carpeta de datos: %s", dir)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "secreto"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	CleanTemp()
+	if entries, _ := os.ReadDir(TempDir()); len(entries) != 0 {
+		t.Fatalf("CleanTemp debía vaciar la carpeta: %v", entries)
+	}
+	if _, err := os.Stat(TempDir()); err != nil {
+		t.Fatal("la carpeta tmp en sí debe seguir existiendo")
+	}
+	CleanTemp() // sin nada que limpiar, no falla
+}

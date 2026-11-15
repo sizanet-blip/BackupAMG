@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"backup-agent/internal/paths"
 )
 
 // KeyInfo es una clave (una contraseña) de un repositorio. Un repositorio puede tener varias.
@@ -72,7 +74,7 @@ func KeyAdd(ctx context.Context, exe, repo, password, newPassword string) (strin
 	if strings.TrimSpace(newPassword) == "" {
 		return "", fmt.Errorf("la contraseña nueva está vacía")
 	}
-	dir, err := os.MkdirTemp("", "ba-pw-")
+	dir, err := paths.MkdirTemp("ba-pw-")
 	if err != nil {
 		return "", fmt.Errorf("no se pudo preparar el cambio de contraseña")
 	}

@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"backup-agent/internal/paths"
 )
 
 // PasswordOK comprueba si la contraseña abre un repositorio que ya existe.
@@ -30,7 +32,7 @@ func PasswordOK(ctx context.Context, exe, repo, password string) (bool, bool, er
 // ChangePassword cambia la contraseña de un repositorio ya creado.
 // La contraseña nueva va en un fichero temporal, no en la lista de argumentos.
 func ChangePassword(ctx context.Context, exe, repo, oldPassword, newPassword string) error {
-	dir, err := os.MkdirTemp("", "ba-pw-")
+	dir, err := paths.MkdirTemp("ba-pw-")
 	if err != nil {
 		return fmt.Errorf("no se pudo preparar el cambio de contraseña")
 	}

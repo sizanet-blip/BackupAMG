@@ -3,6 +3,7 @@ package restic
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -62,5 +63,41 @@ func TestKeysAddListRemoveAndTheOtherPasswordMessage(t *testing.T) {
 	}
 	if PlainFailure(err.Error()) != err.Error() {
 		t.Fatalf("el mensaje no debe pasar por el filtro técnico: %q", PlainFailure(err.Error()))
+	}
+}
+
+// El fichero con la contraseña nueva se crea en la carpeta propia del agente, nunca en la TEMP del sistema:
+// si esa carpeta no se puede usar, KeyAdd falla en vez de usar otra.
+func TestKeyAddNeverFallsBackToTheSystemTempFolder(t *testing.T) {
+	exe := replicaExe(t)
+	data := t.TempDir()
+	t.Setenv("BACKUP_AGENT_DATA_DIR", data)
+	if err := os.WriteFile(filepath.Join(data, "tmp"), []byte("no soy una carpeta"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	repo := filepath.Join(t.TempDir(), "r")
+	if _, err := Init(ctx, InitRequest{Executable: exe, Repository: repo, Password: "vieja"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := KeyAdd(ctx, exe, repo, "vieja", "nueva"); err == nil {
+		t.Fatal("sin carpeta temporal propia no debe añadirse la clave")
+	}
+	if err := ChangePassword(ctx, exe, repo, "vieja", "nueva"); err == nil {
+		t.Fatal("ChangePassword tampoco debe usar la TEMP del sistema")
+	}
+	if ok, _, _ := PasswordOK(ctx, exe, repo, "vieja"); !ok {
+		t.Fatal("el repositorio no debía cambiar")
+	}
+	// Con la carpeta disponible, funciona y no deja restos.
+	if err := os.Remove(filepath.Join(data, "tmp")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := KeyAdd(ctx, exe, repo, "vieja", "nueva"); err != nil {
+		t.Fatal(err)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(data, "tmp")); len(entries) != 0 {
+		t.Fatalf("quedaron restos con la contraseña: %v", entries)
 	}
 }

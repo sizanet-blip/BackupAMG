@@ -20,6 +20,7 @@ func signalSetup() {
 
 // runLoop arranca el panel y, si falta la configuración, espera al asistente antes de programar copias.
 func runLoop(ctx context.Context, logger *logging.Logger) int {
+	paths.CleanTemp()
 	cfg, loadErr := config.Load(paths.ConfigPath())
 	port := config.PeekPort(paths.ConfigPath())
 	if loadErr == nil {

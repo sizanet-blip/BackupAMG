@@ -14,7 +14,6 @@ import (
 	"backup-agent/internal/restic"
 	"backup-agent/internal/scheduler"
 	"backup-agent/internal/state"
-	"backup-agent/internal/status"
 	"backup-agent/internal/system"
 )
 
@@ -43,9 +42,8 @@ func runWithRetries(ctx context.Context, logger *logging.Logger, trigger string)
 	}
 	defer backupMu.Unlock()
 
-	waitPasswordChange(ctx)
 	preemptReplicas(logger)
-	ctx, stop, ok := live.enter(ctx, status.ActivityBackup)
+	ctx, stop, ok := enterBackupRoom(ctx)
 	if !ok {
 		logger.Warn("Ya hay una tarea en curso; esta no se inicia")
 		return 1

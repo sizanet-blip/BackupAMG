@@ -34,12 +34,41 @@ import (
 
 var passwordChanging atomic.Bool
 
-// waitPasswordChange hace esperar a una copia que llega mientras se cambia la contraseña:
-// dura segundos y así la copia programada no se pierde.
-func waitPasswordChange(ctx context.Context) {
-	for i := 0; i < 1200 && passwordChanging.Load() && ctx.Err() == nil; i++ {
-		time.Sleep(100 * time.Millisecond)
+// Tiempo máximo que una copia espera a que acabe un cambio de contraseña, y cada cuánto mira.
+// Son variables para que las pruebas las acorten.
+var (
+	passwordWaitMax  = 30 * time.Minute
+	passwordWaitStep = 100 * time.Millisecond
+)
+
+// waitPasswordChange hace esperar a una copia que llega mientras se cambia la contraseña,
+// hasta que termine (con un tope muy largo). Así la copia programada no se pierde.
+// Devuelve false si se agotó el tope o se canceló.
+func waitPasswordChange(ctx context.Context) bool {
+	deadline := time.Now().Add(passwordWaitMax)
+	for passwordChanging.Load() {
+		if ctx.Err() != nil || !time.Now().Before(deadline) {
+			return false
+		}
+		time.Sleep(passwordWaitStep)
 	}
+	return true
+}
+
+// enterBackupRoom entra en la sala de actividad para hacer una copia. Si hay un cambio de
+// contraseña en marcha, espera a que acabe y vuelve a intentarlo: la copia no se descarta.
+func enterBackupRoom(ctx context.Context) (context.Context, func(), bool) {
+	for attempt := 0; attempt < 5; attempt++ {
+		waitPasswordChange(ctx)
+		entered, stop, ok := live.enter(ctx, status.ActivityBackup)
+		if ok {
+			return entered, stop, true
+		}
+		if ctx.Err() != nil || !passwordChanging.Load() {
+			return nil, nil, false
+		}
+	}
+	return nil, nil, false
 }
 
 type keyTarget struct {
@@ -61,13 +90,17 @@ func changePasswordEverywhere(newPassword string) ([]string, error) {
 	if parent == nil {
 		parent = context.Background()
 	}
+	// La señal se pone ANTES de pedir la sala: así una copia que llega justo en medio espera
+	// en vez de encontrar la sala ocupada y descartarse.
+	if !passwordChanging.CompareAndSwap(false, true) {
+		return []string{"Ya se está cambiando la contraseña."}, nil
+	}
+	defer passwordChanging.Store(false)
 	ctx, stop, ok := live.enter(parent, status.ActivityPassword)
 	if !ok {
 		return []string{"Hay una copia o una recuperación en marcha. Espera a que termine y vuelve a intentarlo."}, nil
 	}
 	defer stop()
-	passwordChanging.Store(true)
-	defer passwordChanging.Store(false)
 
 	cfg, err := config.Load(paths.ConfigPath())
 	if err != nil {

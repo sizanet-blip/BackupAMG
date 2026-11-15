@@ -30,10 +30,16 @@ func PIDAlive(pid int) bool {
 	if pid <= 0 {
 		return false
 	}
-	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION|windows.SYNCHRONIZE, false, uint32(pid))
 	if err == nil {
-		_ = windows.CloseHandle(handle)
-		return true
+		defer windows.CloseHandle(handle)
+		// Un proceso terminado sigue siendo "abrible" mientras alguien tenga un
+		// manejador suyo (antivirus, el padre...). Hay que mirar si ya ha acabado.
+		event, waitErr := windows.WaitForSingleObject(handle, 0)
+		if waitErr != nil {
+			return true
+		}
+		return event == uint32(windows.WAIT_TIMEOUT)
 	}
 	return err == windows.ERROR_ACCESS_DENIED
 }

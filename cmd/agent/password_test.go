@@ -28,6 +28,7 @@ type pwEnv struct {
 
 func newPWEnv(t *testing.T) *pwEnv {
 	t.Helper()
+	t.Setenv("BACKUP_AGENT_DATA_DIR", t.TempDir()) // los ficheros temporales con contraseñas van aquí
 	exe := filepath.Join("..", "..", "bin", "restic.exe")
 	if _, err := os.Stat(exe); err != nil {
 		t.Skip("no está bin/restic.exe")
