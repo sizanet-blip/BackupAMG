@@ -146,8 +146,8 @@ func prepareNewDestination(newPath string) []string {
 		return []string{"No se pudo usar la contraseña guardada, así que el destino no se ha cambiado."}
 	}
 	if err := prepareRepository(newPath, password); err != nil {
-		if strings.Contains(err.Error(), "no abre") {
-			return []string{"En esa carpeta ya hay copias guardadas con otra contraseña, y la contraseña actual no las abre. El destino no se ha cambiado. Elige otra carpeta o usa la contraseña con la que se hicieron esas copias."}
+		if errors.Is(err, errRepoOtherPassword) {
+			return []string{"Esta carpeta ya tiene copias hechas con otra contraseña. Elige otra carpeta. El destino no se ha cambiado."}
 		}
 		return []string{"No se ha podido preparar la carpeta nueva (" + err.Error() + "). El destino no se ha cambiado."}
 	}
@@ -243,7 +243,7 @@ func probeDestination(path string) map[string]any {
 		return result
 	}
 	if !ok {
-		result["message"] = "La contraseña guardada no abre este destino."
+		result["message"] = "Esta carpeta ya tiene copias hechas con otra contraseña. Elige otra carpeta."
 		return result
 	}
 	if result["writable"] != true {

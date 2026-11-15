@@ -118,9 +118,13 @@ function pintar(estado) {
   const nivel = estado.level || "red";
   const enCurso = estado.activity === "backup" || estado.activity === "restore" || estado.activity === "verify";
   const luz = document.getElementById("semaforo");
+  // El escudo cambia con el estado: con marca si todo va bien, con exclamación si hay un problema, tachado si está parado.
+  const escudo = { green: "shield-check", blue: "shield-check", yellow: "shield-alert", red: "shield-alert", gray: "shield-off" }[enCurso ? "blue" : nivel] || "shield-alert";
+  const usoEscudo = luz.querySelector(".icono-escudo use");
+  if (usoEscudo) usoEscudo.setAttribute("href", "#i-" + escudo);
   luz.className = "escudo " + (enCurso ? "blue" : nivel);
   const pastilla = document.getElementById("pastilla");
-  const clases = { green: "ok", yellow: "aviso", red: "error", blue: "curso" };
+  const clases = { green: "ok", yellow: "aviso", red: "error", blue: "curso", gray: "" };
   pastilla.className = "pastilla " + (enCurso ? "curso" : (clases[nivel] || ""));
   pastilla.textContent = enCurso ? textos.pastillas.curso : (textos.pastillas[nivel] || textos.pastillas.red);
   texto("nivel", fraseEstado(estado));
@@ -167,7 +171,9 @@ function pintar(estado) {
     texto("etiq-verificacion", textos.verificacion);
     pintarVerificacion(estado.last_verify);
   }
-  texto("servicio", textos.servicioActivo);
+  texto("servicio", nivel === "gray" ? textos.servicioParado : textos.servicioActivo);
+  document.getElementById("servicio").classList.toggle("parado", nivel === "gray");
+  pintarCausa(estado, nivel, enCurso);
 
   const caja = document.getElementById("progreso");
   caja.hidden = !enCurso;
@@ -195,6 +201,40 @@ function pintar(estado) {
   if (estado.problem) mostrarAviso(estado.problem);
   if (actividadAnterior && !enCurso) cargarRecientes();
   actividadAnterior = estado.activity || "";
+}
+
+// Si algo no va bien, Inicio dice por qué y ofrece un botón para resolverlo.
+function pintarCausa(estado, nivel, enCurso) {
+  const causa = document.getElementById("causa");
+  const boton = document.getElementById("resolver");
+  const destino = estado.destination || {};
+  const ultima = estado.last_backup;
+  let texto = "";
+  let accion = null;
+  if (!enCurso && (nivel === "red" || nivel === "yellow" || nivel === "gray")) {
+    if (nivel === "gray") {
+      texto = textos.causaParado;
+    } else if (!destino.connected) {
+      texto = textos.causaDestino;
+      if (rol === "admin") accion = { etiqueta: textos.resolverDestino, pantalla: "destino" };
+    } else if (ultima && ultima.status === "failed") {
+      texto = ultima.message || textos.causaFallo;
+      accion = { etiqueta: textos.resolverHistorial, pantalla: "historial" };
+    } else if (ultima && ultima.status === "warning") {
+      texto = ultima.message || textos.causaAvisos;
+      accion = { etiqueta: textos.resolverHistorial, pantalla: "historial" };
+    } else if (nivel === "red") {
+      texto = textos.causaAntigua;
+    }
+  }
+  causa.hidden = !texto;
+  causa.textContent = texto;
+  causa.className = "causa " + (nivel === "yellow" ? "amarillo" : "rojo");
+  boton.hidden = !accion;
+  if (accion) {
+    boton.textContent = accion.etiqueta;
+    boton.onclick = () => mostrarPantalla(accion.pantalla);
+  }
 }
 
 async function cargarRecientes() {
@@ -326,6 +366,7 @@ async function accion(ruta) {
 async function cargar() {
   document.getElementById("pantalla-inicio").classList.add("esqueleto");
   texto("salir", textos.ocultarSesion);
+  texto("saltar", textos.saltarContenido);
   texto("titulo-inicio", textos.menu.inicio);
   texto("ayuda-inicio", textos.ayudaInicio);
   texto("etiq-destino", textos.destino);

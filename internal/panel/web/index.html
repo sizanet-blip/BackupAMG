@@ -23,7 +23,10 @@
 <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 3v12"/> <path d="m17 8-5-5-5 5"/> <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></symbol>
 <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/> <path d="M12 19V5"/></symbol>
 <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/> <path d="M14 2v5a1 1 0 0 0 1 1h5"/></symbol>
+<symbol id="i-shield-alert" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/> <path d="M12 8v4"/> <path d="M12 16h.01"/></symbol>
+<symbol id="i-shield-off" viewBox="0 0 24 24"><path d="m2 2 20 20"/> <path d="M5 5a1 1 0 0 0-1 1v7c0 5 3.5 7.5 7.67 8.94a1 1 0 0 0 .67.01c2.35-.82 4.48-1.97 5.9-3.71"/> <path d="M9.309 3.652A12.252 12.252 0 0 0 11.24 2.28a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1v7a9.784 9.784 0 0 1-.08 1.264"/></symbol>
 </svg>
+<a id="saltar" class="saltar" href="#contenido"></a>
 <div class="app">
 <aside id="barra" class="barra-lateral" hidden>
   <div class="marca"><img class="marca-barra" src="/marca-barra.svg" alt="BackupAMG" width="200" height="45"></div>
@@ -42,7 +45,7 @@
     <button id="salir" type="button"></button>
   </div>
 </aside>
-<div class="contenido">
+<div class="contenido" id="contenido" tabindex="-1">
 <main id="pantalla-inicio">
   <header class="cabecera">
     <h1 id="titulo-inicio"></h1>
@@ -59,6 +62,8 @@
       <p id="linea-ultima" class="nota"></p>
       <p id="linea-proxima" class="nota"></p>
       <p id="aviso" class="aviso" hidden></p>
+      <p id="causa" class="causa" role="status" hidden></p>
+      <button id="resolver" class="secundario" type="button" hidden></button>
     </div>
     <div class="acciones">
       <button id="verificar" class="secundario" type="button"></button>

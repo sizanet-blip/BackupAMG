@@ -161,7 +161,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ## Lucide (iconos) lucide-static 1.73.0
 
-Los iconos del panel (casa, carpeta, disco, reloj, historial, restaurar, ajustes, escudo, flechas y archivo) son de Lucide, tomados sin cambios del paquete `lucide-static` 1.73.0. Se distribuyen bajo la licencia ISC:
+Los iconos del panel (casa, carpeta, disco, reloj, historial, restaurar, ajustes, escudo con marca, con exclamación y tachado, flechas y archivo) son de Lucide, tomados sin cambios del paquete `lucide-static` 1.73.0. Se distribuyen bajo la licencia ISC:
 
 ```
 ISC License

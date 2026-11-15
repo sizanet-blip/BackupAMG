@@ -107,7 +107,7 @@ func completeSetup(raw []byte) ([]string, error) {
 		return nil, err
 	}
 	if err := prepareRepository(repoPath, body.Password); err != nil {
-		if strings.Contains(err.Error(), "no abre") {
+		if errors.Is(err, errRepoOtherPassword) {
 			return []string{err.Error()}, nil
 		}
 		return nil, err
@@ -122,6 +122,9 @@ func completeSetup(raw []byte) ([]string, error) {
 	return nil, nil
 }
 
+// errRepoOtherPassword: la carpeta ya tiene copias hechas con otra contraseña.
+var errRepoOtherPassword = errors.New("Esta carpeta ya tiene copias hechas con otra contraseña. Elige otra carpeta o escribe la contraseña original.")
+
 func prepareRepository(path, password string) error {
 	exe, err := restic.Executable()
 	if err != nil {
@@ -135,7 +138,7 @@ func prepareRepository(path, password string) error {
 			return err
 		}
 		if exists && !ok {
-			return errors.New("La contraseña no abre las copias que ya hay en esa carpeta.")
+			return errRepoOtherPassword
 		}
 		return nil
 	}

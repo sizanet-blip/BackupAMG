@@ -88,7 +88,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: 40px;
+  min-height: 44px;
   padding: 8px 12px;
   border: 0;
   border-radius: var(--radio-control);
@@ -101,7 +101,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .menu button.activo { background: var(--accent-soft); color: var(--accent-text); }
 .pie-lateral { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding: 12px 8px 0; }
 .pie-lateral p { margin: 0; color: var(--text-muted); font-size: 12px; }
-#salir { background: transparent; color: var(--text-2); border: 0; min-height: 36px; padding: 0; text-align: left; cursor: pointer; }
+#salir { background: transparent; color: var(--text-2); border: 0; min-height: 44px; padding: 0; text-align: left; cursor: pointer; }
 
 .contenido { flex: 1; min-width: 0; padding: 28px clamp(20px, 3vw, 48px) 48px; container-type: inline-size; }
 .contenido main, .pagina { width: 100%; max-width: none; }
@@ -192,7 +192,7 @@ button.secundario, .horas button.secundario {
 }
 button.peligro, #cancelar { background: transparent; color: var(--error); border: 0; }
 button.enlace {
-  min-height: 32px; padding: 0; background: transparent; color: var(--accent-text);
+  min-height: 44px; padding: 0; background: transparent; color: var(--accent-text);
   border: 0; font-weight: 600;
 }
 #verificacion-real { display: inline-flex; margin-top: 8px; }
@@ -264,11 +264,11 @@ button[disabled] { opacity: 0.45; cursor: default; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .fila-carpeta-peso { flex: none; color: var(--text-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
-.fila-carpeta .enlace { flex: none; min-height: 32px; padding: 0 2px; color: var(--error); font-weight: 600; }
+.fila-carpeta .enlace { flex: none; min-height: 44px; padding: 0 2px; color: var(--error); font-weight: 600; }
 .miga { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; color: var(--text-2); font-size: 13px; }
 .miga button { min-height: 28px; padding: 0; background: transparent; color: var(--accent-text); }
 .tabla-archivo { display: grid; grid-template-columns: auto 1fr auto auto; gap: 12px; align-items: center; margin: 0; }
-.tabla-archivo .enlace { min-height: 32px; background: transparent; }
+.tabla-archivo .enlace { min-height: 44px; background: transparent; }
 .copia-item { display: block; width: 100%; margin: 4px 0; padding: 10px 12px; text-align: left; background: transparent; color: var(--text); border: 1px solid transparent; border-radius: var(--radio-control); }
 .copia-item.activo { border-color: var(--accent); background: var(--accent-soft); }
 .copia-item small { display: block; color: var(--text-muted); font-weight: 400; }
@@ -301,7 +301,7 @@ button[disabled] { opacity: 0.45; cursor: default; }
 }
 .guardar-barra span { margin-right: auto; font-size: 13px; font-weight: 600; color: #D5DAE3; }
 .guardar-barra button {
-  min-height: 40px; padding: 0 16px; border-radius: 10px;
+  min-height: 44px; padding: 0 16px; border-radius: 10px;
   background: var(--accent); color: #fff;
 }
 .guardar-barra .secundario {
@@ -341,7 +341,7 @@ body.con-asistente .contenido { display: flex; justify-content: center; padding-
 .atajos { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 12px 0 0; }
 .dias-semana { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .dia {
-  width: auto; min-height: 36px; padding: 6px 14px;
+  width: auto; min-height: 44px; padding: 6px 14px;
   border: 1px solid var(--border); border-radius: var(--radio-pastilla);
   background: var(--surface); color: var(--text-2); font-size: 13px; font-weight: 700;
 }
@@ -351,7 +351,7 @@ body.con-asistente .contenido { display: flex; justify-content: center; padding-
   border-radius: var(--radio-control); background: var(--surface-muted);
 }
 .fila-hora input[type="time"] {
-  width: auto; min-height: 36px; margin: 0; padding: 0; border: 0; background: transparent;
+  width: auto; min-height: 44px; margin: 0; padding: 0; border: 0; background: transparent;
   font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums;
 }
 .fila-hora .enlace { margin-left: auto; color: var(--error); }
@@ -393,8 +393,13 @@ body.con-asistente .contenido { display: flex; justify-content: center; padding-
 
 @media (max-width: 900px) {
   .app { flex-direction: column; }
-  .barra-lateral { width: 100%; height: auto; position: static; border-right: 0; border-bottom: 1px solid var(--border); }
-  .menu { flex-direction: row; flex-wrap: wrap; }
+  .barra-lateral { width: 100%; min-width: 0; flex: none; height: auto; position: static; border-right: 0; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  /* En pantallas estrechas el menú pasa a una fila que se desliza, para no ocupar media pantalla. */
+  .menu { flex-direction: row; flex-wrap: nowrap; overflow-x: auto; gap: 4px; padding-bottom: 4px; scrollbar-width: thin; }
+  .menu button { width: auto; flex: none; white-space: nowrap; }
+  .pie-lateral { flex-direction: row; align-items: center; justify-content: space-between; padding-top: 4px; }
+  .pie-paso { flex-wrap: wrap; }
+  .pie-paso .falta { flex: 1 1 100%; order: -1; padding: 0 0 8px; text-align: left; }
   .tres, .datos, .mosaico, .restaurar-cuerpo, .cifras-ajuste, .cifras-ajuste.cuatro, .cifras-ajuste.dos, .accesos-ajuste, .presets { grid-template-columns: 1fr; }
   .hero { flex-direction: column; }
 }
@@ -541,7 +546,7 @@ button[disabled] { cursor: not-allowed; }
 .explorador-chips { display: flex; flex-direction: column; gap: 6px; }
 .explorador-chip { display: flex; align-items: center; gap: 12px; padding: 6px 12px; border-radius: var(--radio-control); background: var(--surface-muted); font-size: 13px; }
 .explorador-chip > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.explorador-chip .enlace { flex: none; min-height: 28px; color: var(--error); }
+.explorador-chip .enlace { flex: none; min-height: 44px; color: var(--error); }
 .explorador-hecho { flex: none; color: var(--ok); font-size: 13px; font-weight: 600; }
 
 /* Aviso flotante */
@@ -606,3 +611,17 @@ button[disabled] { cursor: not-allowed; }
   .marca-centro .marca-completa { padding: 6px 14px; border-radius: var(--radio-control); background: var(--text); }
   .marca-barra { box-sizing: content-box; padding: 6px 8px; margin-left: -8px; border-radius: var(--radio-control); background: var(--text); }
 }
+
+/* Causa del problema en Inicio y botón para resolverlo */
+.causa { margin: 8px 0 0; padding: 10px 14px; border-radius: var(--radio-control); font-size: 14px; }
+.causa.rojo { background: var(--error-soft); color: var(--error); }
+.causa.amarillo { background: var(--warn-soft); color: var(--warn); }
+#resolver { margin-top: 8px; }
+.servicio.parado::before { background: var(--neutral); }
+
+/* Teclado: enlace para saltar el menú y foco visible en los campos de fecha y hora */
+.saltar { position: absolute; left: 8px; top: -100px; z-index: 30; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border: 2px solid var(--accent); border-radius: var(--radio-control); background: var(--surface); color: var(--accent-text); font-weight: 600; }
+.saltar:focus { top: 8px; }
+.contenido:focus { outline: none; }
+input[type="date"]:focus-within, input[type="time"]:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.fila-hora:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
