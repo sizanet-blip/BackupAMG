@@ -98,6 +98,11 @@ type Hooks struct {
 	RemoveReplica func(id string) error
 	TestReplica   func(raw []byte) (any, error)
 	RunReplica    func(id string) error
+	// Conexión con la plataforma web.
+	Cloud         func() (any, error)
+	CloudEnroll   func(raw []byte) (problems []string, err error)
+	CloudSettings func(raw []byte) (problems []string, err error)
+	CloudSync     func() error
 }
 
 type ticket struct {
@@ -232,6 +237,10 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("POST /api/v1/destination", s.admin(http.HandlerFunc(s.handleSaveDestination)))
 	mux.Handle("POST /api/v1/destination/test", s.admin(http.HandlerFunc(s.handleTestDestination)))
 	mux.Handle("POST /api/v1/password", s.admin(http.HandlerFunc(s.handlePassword)))
+	mux.Handle("GET /api/v1/cloud", s.adminRead(http.HandlerFunc(s.handleCloud)))
+	mux.Handle("POST /api/v1/cloud/enroll", s.admin(http.HandlerFunc(s.handleCloudEnroll)))
+	mux.Handle("PUT /api/v1/cloud/settings", s.admin(http.HandlerFunc(s.handleCloudSettings)))
+	mux.Handle("POST /api/v1/cloud/sync", s.admin(http.HandlerFunc(s.handleCloudSync)))
 	mux.Handle("GET /api/v1/replicas", s.adminRead(http.HandlerFunc(s.handleReplicas)))
 	mux.Handle("POST /api/v1/replicas", s.admin(http.HandlerFunc(s.handleAddReplica)))
 	mux.Handle("POST /api/v1/replicas/test", s.admin(http.HandlerFunc(s.handleTestReplica)))
@@ -633,6 +642,37 @@ func (s *Server) replicaHooks() Hooks {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.hooks
+}
+
+func (s *Server) handleCloud(w http.ResponseWriter, r *http.Request) {
+	fn := s.replicaHooks().Cloud
+	if fn == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "El agente todavía no está listo."})
+		return
+	}
+	body, err := fn()
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, body)
+}
+
+func (s *Server) handleCloudEnroll(w http.ResponseWriter, r *http.Request) {
+	s.change(w, r, "dar de alta en la plataforma", 16<<10, s.replicaHooks().CloudEnroll)
+}
+
+func (s *Server) handleCloudSettings(w http.ResponseWriter, r *http.Request) {
+	s.change(w, r, "cambiar los ajustes de la plataforma", 16<<10, s.replicaHooks().CloudSettings)
+}
+
+func (s *Server) handleCloudSync(w http.ResponseWriter, r *http.Request) {
+	fn := s.replicaHooks().CloudSync
+	if fn == nil {
+		s.act(w, r, "enviar a la plataforma", nil)
+		return
+	}
+	s.act(w, r, "enviar a la plataforma", func(string) error { return fn() })
 }
 
 func (s *Server) handleReplicas(w http.ResponseWriter, r *http.Request) {

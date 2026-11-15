@@ -137,6 +137,7 @@ func oneAttempt(ctx context.Context, logger *logging.Logger, cfg *config.Config,
 		fmt.Fprintf(os.Stderr, "Error: %v\n", reportErr)
 	} else {
 		logger.Info("Informe guardado", "path", reportPath, "status", rep.Status)
+		cloudReportWritten(reportPath)
 		fmt.Fprintf(os.Stderr, "Informe: %s\n", reportPath)
 		if err := rememberBackup(rep, filepath.Base(reportPath)); err != nil {
 			logger.Error("No se pudo actualizar el estado", "error", err.Error())
@@ -236,6 +237,7 @@ func rememberBackup(rep report.Report, fileName string) error {
 	}
 	if rep.Status != restic.StatusFailed && rep.SnapshotID != "" {
 		st.LastGoodSnapshot = rep.SnapshotID
+		st.LastGoodAt = rep.FinishedAt
 	}
 	return state.Save(paths.StatePath(), st)
 }

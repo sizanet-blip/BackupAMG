@@ -660,3 +660,11 @@ input[type="date"]:focus-within, input[type="time"]:focus-within { border-color:
 .destino-resumen > button { flex: none; }
 #editor-destino { margin-top: 12px; }
 @media (max-width: 640px) { .destino-resumen { flex-wrap: wrap; } .destino-resumen > button { width: 100%; } }
+
+/* Plataforma web (Ajustes) */
+.plataforma-estado { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+.plataforma-estado .nota { margin: 0; flex: 1; min-width: 220px; }
+.plataforma-datos { margin-top: 14px; }
+.plataforma .campo-columna { margin-top: 14px; }
+.plataforma .opcion { margin-top: 14px; }
+.plataforma .barra-filtros { margin-top: 12px; }

@@ -95,6 +95,7 @@ func executeVerification(ctx context.Context, logger *slog.Logger, cfg *config.C
 		return err
 	}
 	logger.Info("Informe guardado", "path", reportPath, "type", rep.Type, "status", rep.Status)
+	cloudReportWritten(reportPath)
 	fmt.Fprintf(os.Stderr, "Informe: %s\n%s\n", reportPath, rep.Message)
 	if err := rememberVerify(rep, filepath.Base(reportPath)); err != nil {
 		logger.Error("No se pudo actualizar el estado de la verificación", "error", err.Error())

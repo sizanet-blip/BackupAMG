@@ -22,6 +22,8 @@ type Config struct {
 	Panel      Panel
 	// Replicas son las copias adicionales (opcional). Vacío: todo funciona como siempre.
 	Replicas []Replica
+	// Cloud es la conexión con la plataforma web (opcional).
+	Cloud Cloud
 }
 
 // Agent identifica el equipo en los informes.

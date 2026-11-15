@@ -4,3 +4,6 @@
 
 # Logs de pruebas locales
 *.log
+
+# Paquetes de alta de prueba (llevan un código de instalación)
+dist/prueba-alta/

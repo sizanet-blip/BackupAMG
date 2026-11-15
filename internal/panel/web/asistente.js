@@ -543,7 +543,47 @@ function pintarAsistente(info) {
     const empezar = document.createElement("button");
     empezar.type = "button";
     empezar.textContent = textos.empezar;
-    cuerpo.append(...titulo, ...resumen, pieAtras(empezar));
+    // Plataforma web (opcional): se pide la clave aquí y el alta se hace al terminar la configuración.
+    const nube = seccionAsistente(textos.plataforma.asistenteTitulo);
+    const nubeAyuda = document.createElement("p");
+    nubeAyuda.className = "nota";
+    nubeAyuda.textContent = textos.plataforma.asistenteAyuda;
+    const nubeCampos = document.createElement("div");
+    nubeCampos.hidden = true;
+    const campoUrl = document.createElement("label");
+    campoUrl.className = "campo-columna";
+    campoUrl.append(document.createTextNode(textos.plataforma.direccion));
+    const nubeUrl = document.createElement("input");
+    nubeUrl.type = "text";
+    nubeUrl.inputMode = "url";
+    nubeUrl.placeholder = textos.plataforma.direccionPista;
+    nubeUrl.autocomplete = "off";
+    nubeUrl.value = datos.nubeUrl || "";
+    nubeUrl.addEventListener("input", () => { datos.nubeUrl = nubeUrl.value.trim(); });
+    campoUrl.append(nubeUrl);
+    const campoClave = document.createElement("label");
+    campoClave.className = "campo-columna";
+    campoClave.append(document.createTextNode(textos.plataforma.clave));
+    const nubeClave = document.createElement("input");
+    nubeClave.type = "text";
+    nubeClave.placeholder = textos.plataforma.clavePista;
+    nubeClave.autocomplete = "off";
+    nubeClave.value = datos.nubeClave || "";
+    nubeClave.addEventListener("input", () => { datos.nubeClave = nubeClave.value.trim(); });
+    campoClave.append(nubeClave);
+    nubeCampos.append(campoUrl, campoClave);
+    nube.append(nubeAyuda, nubeCampos);
+    fetch("/api/v1/cloud").then(async (r) => {
+      if (!r.ok) { nubeCampos.hidden = false; return; }
+      const vista = await r.json();
+      if (vista.alta_file) {
+        nubeAyuda.textContent = textos.plataforma.altaFichero;
+        return;
+      }
+      if (!datos.nubeUrl && vista.server_url) { nubeUrl.value = vista.server_url; datos.nubeUrl = vista.server_url; }
+      nubeCampos.hidden = false;
+    }).catch(() => { nubeCampos.hidden = false; });
+    cuerpo.append(...titulo, ...resumen, nube, pieAtras(empezar));
     empezar.addEventListener("click", async () => {
       empezar.disabled = true;
       empezar.textContent = textos.preparando;
@@ -571,6 +611,22 @@ function pintarAsistente(info) {
       datos.password = "";
       datos.confirm = "";
       borrarBorrador();
+      // La configuración ya existe: ahora se puede dar de alta en la plataforma. Si falla, no
+      // se bloquea nada; se avisa en la pantalla de Inicio y se puede repetir en Ajustes.
+      if (datos.nubeClave) {
+        const alta = await fetch("/api/v1/cloud/enroll", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+          body: JSON.stringify({ credential: datos.nubeClave, server_url: datos.nubeUrl || "" })
+        });
+        if (!alta.ok) {
+          const motivo = await alta.json().catch(() => ({}));
+          try {
+            sessionStorage.setItem("ba_aviso", textos.plataforma.asistenteFalloAviso.replace("{motivo}", (motivo.fields || [motivo.error || ""]).join(" ")));
+          } catch (e) { /* sin almacenamiento: no pasa nada */ }
+        }
+        datos.nubeClave = "";
+      }
       location.reload();
     });
   }

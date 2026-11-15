@@ -19,6 +19,8 @@ type State struct {
 	// LastGoodSnapshot es la instantánea de la última copia correcta o con avisos. Una copia
 	// fallida posterior no la borra: es lo que las copias adicionales tienen que replicar.
 	LastGoodSnapshot string `json:"last_good_snapshot,omitempty"`
+	// LastGoodAt es cuándo terminó esa última copia correcta o con avisos.
+	LastGoodAt string `json:"last_good_at,omitempty"`
 	// Replicas es el estado de cada copia adicional, por identificador. Opcional.
 	Replicas map[string]*ReplicaState `json:"replicas,omitempty"`
 	// PendingKeyRemovals son contraseñas antiguas que tras un cambio de contraseña todavía abren

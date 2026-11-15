@@ -146,6 +146,13 @@ function iniciarConfiguracion() {
 
 function iniciarMenu(admin) {
   document.getElementById("barra").hidden = false;
+  try {
+    const pendiente = sessionStorage.getItem("ba_aviso");
+    if (pendiente) {
+      sessionStorage.removeItem("ba_aviso");
+      setTimeout(() => mostrarToast(pendiente, false), 600);
+    }
+  } catch (e) { /* sin almacenamiento: no pasa nada */ }
   const menu = document.getElementById("menu");
   menu.querySelectorAll("button").forEach((boton) => {
     const id = boton.dataset.pantalla;

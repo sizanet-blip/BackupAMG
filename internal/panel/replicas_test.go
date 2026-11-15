@@ -216,3 +216,65 @@ func TestPasswordChangeCanReturnANotice(t *testing.T) {
 		t.Fatalf("%d %s", code, body)
 	}
 }
+
+// La conexión con la plataforma solo la gestiona un administrador, con Origin y CSRF.
+func TestCloudRoutesAreAdminOnly(t *testing.T) {
+	s, ts := testPanel(t)
+	var calls []string
+	s.SetHooks(Hooks{
+		Status: func() any { return map[string]string{"level": "green"} },
+		Cloud:  func() (any, error) { calls = append(calls, "view"); return map[string]any{"state": "connected"}, nil },
+		CloudEnroll: func(raw []byte) ([]string, error) {
+			calls = append(calls, "enroll")
+			if strings.Contains(string(raw), "mala") {
+				return []string{"La clave de licencia no es válida."}, nil
+			}
+			return nil, nil
+		},
+		CloudSettings: func(raw []byte) ([]string, error) { calls = append(calls, "settings"); return nil, nil },
+		CloudSync:     func() error { calls = append(calls, "sync"); return nil },
+	})
+	origin := "http://127.0.0.1:" + portOf(ts)
+	user := redeem(t, ts, s.IssueToken(`ALBERTOM\Alberto`, RoleUser))
+	userCSRF := csrfOf(t, ts, user)
+	requests := []struct{ method, path, body string }{
+		{"GET", "/api/v1/cloud", ""},
+		{"POST", "/api/v1/cloud/enroll", `{"credential":"BKA-1"}`},
+		{"PUT", "/api/v1/cloud/settings", `{"server_url":"https://x"}`},
+		{"POST", "/api/v1/cloud/sync", `{}`},
+	}
+	for _, rq := range requests {
+		if code, _ := send(t, ts, rq.method, rq.path, user, userCSRF, origin, rq.body); code != http.StatusForbidden {
+			t.Fatalf("un usuario normal no puede %s %s (%d)", rq.method, rq.path, code)
+		}
+	}
+	if len(calls) != 0 {
+		t.Fatalf("se ejecutó algo sin permiso: %v", calls)
+	}
+	admin := redeem(t, ts, s.IssueToken(`ALBERTOM\Alberto`, RoleAdmin))
+	csrf := csrfOf(t, ts, admin)
+	for _, rq := range requests[1:] {
+		if code, _ := send(t, ts, rq.method, rq.path, admin, "", origin, rq.body); code != http.StatusForbidden {
+			t.Fatalf("sin CSRF %s %s: %d", rq.method, rq.path, code)
+		}
+		if code, _ := send(t, ts, rq.method, rq.path, admin, csrf, "http://evil.example", rq.body); code != http.StatusForbidden {
+			t.Fatalf("con otro origen %s %s: %d", rq.method, rq.path, code)
+		}
+	}
+	for _, rq := range requests {
+		want := http.StatusOK
+		if rq.path == "/api/v1/cloud/sync" {
+			want = http.StatusAccepted
+		}
+		if code, body := send(t, ts, rq.method, rq.path, admin, csrf, origin, rq.body); code != want {
+			t.Fatalf("administrador %s %s: %d %s", rq.method, rq.path, code, body)
+		}
+	}
+	if got := strings.Join(calls, ","); got != "view,enroll,settings,sync" {
+		t.Fatalf("llamadas %s", got)
+	}
+	code, body := send(t, ts, "POST", "/api/v1/cloud/enroll", admin, csrf, origin, `{"credential":"mala"}`)
+	if code != http.StatusBadRequest || !strings.Contains(body, "no es válida") {
+		t.Fatalf("una clave mala debe llegar como 400 con su causa: %d %s", code, body)
+	}
+}

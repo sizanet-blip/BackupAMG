@@ -77,6 +77,15 @@ func run(args []string) int {
 			return 2
 		}
 		return replicateNow(args[1:])
+	case "enroll":
+		return enrollCommand(args[1:])
+	case "enroll-file":
+		if len(args) > 2 {
+			fmt.Fprintf(os.Stderr, "El comando enroll-file admite como mucho una ruta.\n\n")
+			usage()
+			return 2
+		}
+		return enrollFileCommand(args[1:])
 	case "install", "uninstall", "start", "stop":
 		if len(args) > 1 {
 			fmt.Fprintf(os.Stderr, "El comando %s no admite argumentos.\n\n", args[0])
@@ -125,6 +134,8 @@ Uso:
   agent backup-now     Hace una copia inmediata, aplica la retención y termina.
   agent verify         Comprueba el repositorio ahora.
   agent replicate [id] Pone al día las copias adicionales (todas o la indicada).
+  agent enroll [--server URL] <clave>  Da de alta el equipo en la plataforma web (clave de licencia o código de instalación).
+  agent enroll-file [ruta]  Da de alta el equipo con alta-backupamg.json.
   agent install        Registra el servicio de Windows. Hace falta administrador.
   agent uninstall      Quita el servicio de Windows.
   agent start          Arranca el servicio.

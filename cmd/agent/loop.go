@@ -49,6 +49,7 @@ func runLoop(ctx context.Context, logger *logging.Logger) int {
 		}
 	}
 	go replicaLoop(ctx, logger)
+	startCloud(ctx, logger)
 	runSchedule(ctx, logger, cfg)
 	return 0
 }

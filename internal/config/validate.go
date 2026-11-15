@@ -34,6 +34,7 @@ type rawFile struct {
 	Verify     *rawVerify     `yaml:"verify"`
 	Panel      *rawPanel      `yaml:"panel"`
 	Replicas   []rawReplica   `yaml:"replicas"`
+	Cloud      *rawCloud      `yaml:"cloud"`
 }
 
 type rawAgent struct {
@@ -117,6 +118,7 @@ func (raw rawFile) validate() (*Config, error) {
 		problems = append(problems, applyPanel(*raw.Panel, cfg)...)
 	}
 	problems = append(problems, applyReplicas(raw.Replicas, cfg)...)
+	problems = append(problems, applyCloud(raw.Cloud, cfg)...)
 
 	if len(problems) > 0 {
 		return nil, &ValidationError{Problems: problems}

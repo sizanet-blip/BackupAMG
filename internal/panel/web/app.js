@@ -157,6 +157,7 @@ function pintar(estado) {
   disco.parentElement.hidden = enCurso;
   texto("destino-espacio", destino.connected && total > 0 ? (enCurso ? tamano(destino.free_bytes) + " libres" : tamano(destino.free_bytes) + " libres de " + tamano(total)) : textos.destinoAusente);
   pintarCopiasInicio(estado.replicas || []);
+  pintarNubeInicio(estado.cloud);
   const tarjetas = document.getElementById("tarjetas");
   tarjetas.classList.toggle("ocupado", enCurso);
   document.querySelector(".actividad").hidden = enCurso;
@@ -202,6 +203,16 @@ function pintar(estado) {
   if (estado.problem) mostrarAviso(estado.problem);
   if (actividadAnterior && !enCurso) cargarRecientes();
   actividadAnterior = estado.activity || "";
+}
+
+// Línea de Inicio con el estado de la conexión con la plataforma web. No aparece si no se usa.
+function pintarNubeInicio(nube) {
+  const linea = document.getElementById("linea-nube");
+  const corto = nube && textos.plataforma.cortos[nube.state];
+  linea.hidden = !corto;
+  if (!corto) return;
+  linea.textContent = textos.inicioNube.etiqueta + ": " + corto;
+  linea.className = "punto " + (nube.state === "connected" ? "ok" : "aviso");
 }
 
 // Línea de Inicio con el estado de las copias adicionales (si hay alguna).

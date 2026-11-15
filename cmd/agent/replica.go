@@ -300,6 +300,7 @@ func replicateOne(ctx context.Context, logger *logging.Logger, cfg *config.Confi
 		} else {
 			reportName = filepath.Base(path)
 			logger.Info("Informe guardado", "path", path, "type", rep.Type, "status", rep.Status)
+			cloudReportWritten(path)
 		}
 	}
 	recordReplica(logger, r.ID, func(rs *state.ReplicaState) {

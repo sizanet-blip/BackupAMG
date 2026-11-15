@@ -40,6 +40,11 @@ Source: "..\bin\tray.exe"; DestDir: "{app}"; DestName: "{#MyTrayExeName}"; Flags
 Source: "..\bin\restic.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\docs\THIRD_PARTY_LICENSES.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\configs\config.example.yaml"; DestDir: "{commonappdata}\{#MyAppName}"; DestName: "config.yaml"; Flags: onlyifdoesntexist uninsneveruninstall
+; Instalador preparado por empresa: si junto a este instalador hay un alta-backupamg.json (con la
+; dirección de la plataforma y un código de instalación), se copia a la carpeta de datos. El agente lo
+; lee en el primer arranque, hace el alta él solo y lo borra. Si no está, el asistente pide la clave.
+; No se lanza ningún programa: es solo un fichero (docs\ANTIVIRUS.md).
+Source: "{src}\alta-backupamg.json"; DestDir: "{commonappdata}\{#MyAppName}"; Flags: external skipifsourcedoesntexist ignoreversion
 
 [Dirs]
 Name: "{commonappdata}\{#MyAppName}"; Flags: uninsneveruninstall
@@ -75,6 +80,15 @@ begin
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#MyTrayExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
+function AltaMessage: String;
+begin
+  { Si el instalador trae el alta de una empresa, se avisa: el equipo se conectará solo a la plataforma. }
+  if FileExists(ExpandConstant('{src}\alta-backupamg.json')) then
+    Result := 'Este instalador trae el alta de tu empresa: cuando el servicio arranque, el equipo se conectará solo a la plataforma.' + #13#10 + #13#10
+  else
+    Result := '';
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
@@ -108,6 +122,7 @@ begin
   Exec(ExpandConstant('{app}\{#MyTrayExeName}'), '', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
   if not WizardSilent then
     MsgBox('La instalación ha terminado.' + #13#10 + #13#10 +
+      AltaMessage +
       'El icono de la bandeja ya está visible y se abrirá solo al iniciar sesión.' + #13#10 +
       'Ábrelo y sigue el asistente del panel. La contraseña, si se pierde, no se puede recuperar: guárdala también fuera de este equipo.' + #13#10 + #13#10 +
       'El servicio arrancará solo al encender el equipo. Todavía no se ha iniciado.' + #13#10 +

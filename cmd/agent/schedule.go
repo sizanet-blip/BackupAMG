@@ -28,6 +28,9 @@ func signalConfigReload() {
 	default:
 	}
 	kickReplicas()
+	if cloudSender != nil {
+		cloudSender.Kick() // una configuración nueva (por ejemplo la dirección de la plataforma) se aplica enseguida
+	}
 }
 
 // retryWait es el tiempo de espera entre reintentos. Las pruebas lo acortan.

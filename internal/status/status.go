@@ -36,7 +36,20 @@ type View struct {
 	Job         *Job           `json:"job,omitempty"`
 	// Replicas es el estado de las copias adicionales. Falta si no hay ninguna.
 	Replicas []Replica `json:"replicas,omitempty"`
-	Problem  string    `json:"problem,omitempty"`
+	// Cloud es el estado de la conexión con la plataforma web. Falta si no está preparada.
+	Cloud   *Cloud `json:"cloud,omitempty"`
+	Problem string `json:"problem,omitempty"`
+}
+
+// Cloud es el resumen de la conexión con la plataforma web, para Inicio y la bandeja.
+// State: not_configured, not_enrolled, connected, offline, license_expired, license_blocked,
+// seat_limit, revoked o needs_enroll.
+type Cloud struct {
+	State      string `json:"state"`
+	Code       string `json:"code,omitempty"`
+	Company    string `json:"company,omitempty"`
+	Pending    int    `json:"pending"`
+	LastSyncAt string `json:"last_sync_at,omitempty"`
 }
 
 // Job describe la tarea que está en curso.

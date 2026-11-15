@@ -147,6 +147,7 @@ func marshalFile(cfg Config) ([]byte, error) {
 		Verify     verify        `yaml:"verify"`
 		Panel      panel         `yaml:"panel"`
 		Replicas   []fileReplica `yaml:"replicas,omitempty"`
+		Cloud      *fileCloud    `yaml:"cloud,omitempty"`
 	}{
 		Agent: agent{Name: cfg.Agent.Name},
 		Backup: backup{
@@ -174,6 +175,8 @@ func marshalFile(cfg Config) ([]byte, error) {
 		Panel:  panel{Port: cfg.Panel.Port},
 		// Las copias adicionales se conservan al guardar Ajustes.
 		Replicas: fileReplicas(cfg.Replicas),
+		// La conexión con la plataforma también se conserva al guardar Ajustes.
+		Cloud: cloudForFile(cfg.Cloud),
 	}
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)

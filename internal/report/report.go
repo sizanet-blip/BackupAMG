@@ -55,6 +55,9 @@ type Report struct {
 	Retention            Retention     `json:"retention"`
 	Message              string        `json:"message"`
 	// Solo en los informes de réplica (type "replica"); en los demás no aparecen.
+	// ReportUID identifica este informe de forma única y estable; lo usa la plataforma web para no
+	// duplicarlo si se reenvía. Opcional: los informes anteriores a esta versión no lo llevan.
+	ReportUID       string `json:"report_uid,omitempty"`
 	ReplicaID       string `json:"replica_id,omitempty"`
 	ReplicaName     string `json:"replica_name,omitempty"`
 	SnapshotsCopied int    `json:"snapshots_copied,omitempty"`
@@ -100,6 +103,7 @@ type Input struct {
 	Message              string
 	RetentionApplied     bool
 	SnapshotsRemoved     int
+	ReportUID            string
 	ReplicaID            string
 	ReplicaName          string
 	SnapshotsCopied      int
@@ -131,6 +135,10 @@ func Build(in Input) Report {
 	sources := in.Sources
 	if sources == nil {
 		sources = []string{}
+	}
+	uid := in.ReportUID
+	if uid == "" {
+		uid = NewUID()
 	}
 	kind := in.Type
 	if kind == "" {
@@ -166,6 +174,7 @@ func Build(in Input) Report {
 			SnapshotsRemoved: in.SnapshotsRemoved,
 		},
 		Message:         in.Message,
+		ReportUID:       uid,
 		ReplicaID:       in.ReplicaID,
 		ReplicaName:     in.ReplicaName,
 		SnapshotsCopied: in.SnapshotsCopied,

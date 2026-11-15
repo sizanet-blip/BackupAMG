@@ -91,6 +91,10 @@ func (l *liveJob) bind(ctx context.Context, logger *logging.Logger, srv *panel.S
 		Shortcuts:        folderShortcuts,
 		Estimate:         estimateSources,
 		Replicas:         replicaListing,
+		Cloud:            cloudView,
+		CloudEnroll:      cloudEnroll,
+		CloudSettings:    cloudSettings,
+		CloudSync:        cloudSync,
 		AddReplica:       addReplica,
 		UpdateReplica:    updateReplica,
 		RemoveReplica:    removeReplica,
@@ -313,6 +317,7 @@ func (l *liveJob) snapshot() any {
 	_, overdue := scheduler.MostRecentDueOn(now, lastAttemptTime(), cfg.Schedule.Times, cfg.Schedule.Weekdays)
 	replicas, replicaStale := replicaViews(cfg, st, now)
 	view.Replicas = replicas
+	view.Cloud = cloudStatus()
 	view.Level = status.Decide(status.Facts{
 		Now:          now,
 		Activity:     kind,

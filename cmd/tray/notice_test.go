@@ -111,3 +111,26 @@ func TestMenuLinesUsePlainSpanish(t *testing.T) {
 		t.Fatal(detail)
 	}
 }
+
+func TestCloudLineShowsThePlatformStateOnlyWhenConfigured(t *testing.T) {
+	if cloudLine(nil) != "" || cloudLine(&status.Cloud{State: "not_configured"}) != "" {
+		t.Fatal("sin plataforma configurada no debe aparecer nada")
+	}
+	cases := map[string]string{
+		"connected": "Plataforma: conectada", "offline": "Plataforma: sin conexión", "license_expired": "Plataforma: licencia caducada",
+		"seat_limit": "Plataforma: límite de equipos", "revoked": "Plataforma: equipo desactivado",
+	}
+	for state, want := range cases {
+		if got := cloudLine(&status.Cloud{State: state}); got != want {
+			t.Fatalf("%s: %q", state, got)
+		}
+	}
+	v := status.View{Level: status.Green, LastBackup: &status.Run{FinishedAt: "2026-11-15T20:00:00+01:00"}, Cloud: &status.Cloud{State: "offline"}}
+	if _, detail := menuLines(v, true, time.Now()); !strings.Contains(detail, "Plataforma: sin conexión") {
+		t.Fatalf("detalle: %q", detail)
+	}
+	v.Cloud = nil
+	if _, detail := menuLines(v, true, time.Now()); strings.Contains(detail, "Plataforma") {
+		t.Fatalf("sin plataforma no debe nombrarla: %q", detail)
+	}
+}

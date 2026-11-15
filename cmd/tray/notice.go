@@ -100,7 +100,32 @@ func menuLines(v status.View, online bool, now time.Time) (string, string) {
 	if len(partes) == 0 {
 		return title, "Todavía no hay ninguna copia"
 	}
+	if line := cloudLine(v.Cloud); line != "" {
+		partes = append(partes, line)
+	}
 	return title, strings.Join(partes, " · ")
+}
+
+// cloudLine es el estado de la conexión con la plataforma web, en pocas palabras. Vacío si no
+// está configurada: así quien no la usa no ve nada nuevo.
+func cloudLine(c *status.Cloud) string {
+	if c == nil {
+		return ""
+	}
+	names := map[string]string{
+		"connected":       "conectada",
+		"offline":         "sin conexión",
+		"license_expired": "licencia caducada",
+		"license_blocked": "licencia suspendida",
+		"seat_limit":      "límite de equipos",
+		"revoked":         "equipo desactivado",
+		"needs_enroll":    "hay que volver a conectar",
+		"not_enrolled":    "sin conectar",
+	}
+	if name, ok := names[c.State]; ok {
+		return "Plataforma: " + name
+	}
+	return ""
 }
 
 func cuandoCorto(iso string, now time.Time) string {

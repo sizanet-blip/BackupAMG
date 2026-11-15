@@ -43,7 +43,7 @@ function pintarAjustes() {
   const hSoporte = document.createElement("h2");
   hSoporte.textContent = textos.tituloSoporte;
   cajaSoporte.append(hSoporte, nota, generar, aviso);
-  raiz.append(titulo, crearSeguridad(), datos, cajaRegistro, cajaSoporte);
+  raiz.append(titulo, crearSeguridad(), crearPlataforma(), datos, cajaRegistro, cajaSoporte);
 
   function fila(etiqueta, valor) {
     const bloque = document.createElement("article");
@@ -228,5 +228,238 @@ function crearSeguridad() {
   });
 
   caja.append(h2, ayuda, aviso, hoja, cambio);
+  return caja;
+}
+
+// Plataforma web: estado de la conexión, alta con la clave de licencia y envío manual.
+function crearPlataforma() {
+  const tx = textos.plataforma;
+  const caja = document.createElement("article");
+  caja.className = "bloque plataforma";
+  const h2 = document.createElement("h2");
+  h2.textContent = tx.titulo;
+  const ayuda = document.createElement("p");
+  ayuda.className = "nota";
+  ayuda.textContent = tx.ayuda;
+
+  const fila = document.createElement("div");
+  fila.className = "plataforma-estado";
+  const pastilla = document.createElement("span");
+  pastilla.className = "pastilla";
+  const explicacion = document.createElement("p");
+  explicacion.className = "nota";
+  explicacion.setAttribute("role", "status");
+  fila.append(pastilla, explicacion);
+
+  const datos = document.createElement("dl");
+  datos.className = "datos plataforma-datos";
+
+  const aviso = document.createElement("p");
+  aviso.className = "nota";
+  aviso.hidden = true;
+  aviso.textContent = tx.altaFichero;
+
+  // Dirección
+  const campoDireccion = document.createElement("label");
+  campoDireccion.className = "campo-columna";
+  campoDireccion.append(document.createTextNode(tx.direccion));
+  const direccion = document.createElement("input");
+  direccion.type = "text";
+  direccion.inputMode = "url";
+  direccion.placeholder = tx.direccionPista;
+  direccion.autocomplete = "off";
+  direccion.spellcheck = false;
+  campoDireccion.append(direccion);
+  const guardarDireccion = document.createElement("button");
+  guardarDireccion.type = "button";
+  guardarDireccion.className = "secundario";
+  guardarDireccion.textContent = tx.guardarDireccion;
+
+  // Clave
+  const campoClave = document.createElement("label");
+  campoClave.className = "campo-columna";
+  campoClave.append(document.createTextNode(tx.clave));
+  const clave = document.createElement("input");
+  clave.type = "text";
+  clave.placeholder = tx.clavePista;
+  clave.autocomplete = "off";
+  clave.spellcheck = false;
+  campoClave.append(clave);
+  const conectar = document.createElement("button");
+  conectar.type = "button";
+  conectar.textContent = tx.conectar;
+  const falta = notaFalta();
+
+  const enviar = document.createElement("button");
+  enviar.type = "button";
+  enviar.className = "secundario";
+  enviar.textContent = tx.enviarAhora;
+
+  const rutas = filaOpcion(tx.rutas, false, () => {});
+  const rutasInput = rutas.querySelector("input");
+  const rutasAyuda = document.createElement("p");
+  rutasAyuda.className = "nota";
+  rutasAyuda.textContent = tx.rutasAyuda;
+
+  const resultado = document.createElement("p");
+  resultado.className = "resultado";
+  resultado.setAttribute("role", "status");
+
+  const accionesDireccion = document.createElement("div");
+  accionesDireccion.className = "barra-filtros";
+  accionesDireccion.append(guardarDireccion);
+  const accionesClave = document.createElement("div");
+  accionesClave.className = "barra-filtros";
+  accionesClave.append(conectar, falta, enviar);
+  caja.append(h2, ayuda, fila, datos, aviso, campoDireccion, accionesDireccion, campoClave, accionesClave, rutas, rutasAyuda, resultado);
+
+  let vista = null;
+  let ultimoJson = "";
+  let direccionGuardada = "";
+
+  const revisar = exigir(conectar, falta, () => {
+    if (!direccion.value.trim()) return tx.faltaDireccion;
+    if (!clave.value.trim()) return tx.faltaClave;
+    return "";
+  });
+  direccion.addEventListener("input", revisar);
+  clave.addEventListener("input", revisar);
+
+  function fila2(etiqueta, valor) {
+    const bloque = document.createElement("div");
+    const dt = document.createElement("dt");
+    dt.textContent = etiqueta;
+    const dd = document.createElement("dd");
+    dd.textContent = valor;
+    bloque.append(dt, dd);
+    datos.append(bloque);
+  }
+
+  function pintar() {
+    const estado = vista.state;
+    pastilla.textContent = tx.estados[estado] || estado;
+    pastilla.className = "pastilla " + (estado === "connected" ? "ok" : (estado === "not_configured" || estado === "not_enrolled") ? "" : "aviso");
+    const cuando = vista.last_sync_at ? fechaRelativa(vista.last_sync_at) : tx.nunca;
+    explicacion.textContent = (tx.ayudasEstado[estado] || "").replace("{cuando}", cuando);
+    datos.replaceChildren();
+    if (vista.enrolled) {
+      if (vista.company) fila2(tx.empresa, vista.company);
+      if (vista.license && vista.license.max_machines) {
+        fila2(tx.equipos, tx.equiposValor.replace("{usados}", vista.license.used_machines).replace("{max}", vista.license.max_machines));
+      }
+      fila2(tx.ultima, cuando);
+      fila2(tx.pendientes, String(vista.pending || 0));
+    }
+    datos.hidden = !datos.children.length;
+    aviso.hidden = !vista.alta_file;
+    if (document.activeElement !== direccion) direccion.value = vista.server_url || "";
+    direccionGuardada = vista.server_url || "";
+    rutasInput.checked = !!vista.send_paths;
+    enviar.disabled = !vista.enrolled;
+    // Con el equipo ya conectado, el campo de la clave solo hace falta si hay que volver a conectar.
+    const necesitaClave = !vista.enrolled || estado === "needs_enroll";
+    campoClave.hidden = !necesitaClave;
+    conectar.hidden = !necesitaClave;
+    revisar();
+    if (!necesitaClave) falta.hidden = true;
+  }
+
+  async function recargar() {
+    try {
+      const respuesta = await fetch("/api/v1/cloud");
+      if (!respuesta.ok) {
+        if (!vista) explicacion.textContent = tx.errorLeer;
+        return;
+      }
+      const texto = await respuesta.text();
+      if (texto === ultimoJson) return;
+      ultimoJson = texto;
+      vista = JSON.parse(texto);
+      pintar();
+    } catch (e) {
+      if (!vista) explicacion.textContent = tx.errorLeer;
+    }
+  }
+
+  async function llamar(metodo, ruta, cuerpo) {
+    const respuesta = await fetch(ruta, {
+      method: metodo,
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+      body: cuerpo ? JSON.stringify(cuerpo) : undefined
+    });
+    const datosRespuesta = await respuesta.json().catch(() => ({}));
+    return { ok: respuesta.ok, cuerpo: datosRespuesta };
+  }
+
+  function error(r) {
+    return (r.cuerpo.fields || [r.cuerpo.error || textos.error]).join(" ");
+  }
+
+  guardarDireccion.addEventListener("click", async () => {
+    const nueva = direccion.value.trim();
+    if (vista && vista.enrolled && nueva.replace(/\/+$/, "") !== direccionGuardada.replace(/\/+$/, "")) {
+      const sigue = await confirmarSiNo({ titulo: tx.cambiarDireccionTitulo, texto: tx.cambiarDireccionTexto, aceptar: tx.cambiarDireccionBoton, peligro: true });
+      if (!sigue) return;
+    }
+    guardarDireccion.disabled = true;
+    const r = await llamar("PUT", "/api/v1/cloud/settings", { server_url: nueva });
+    guardarDireccion.disabled = false;
+    resultado.className = r.ok ? "resultado aviso-ok" : "resultado aviso";
+    resultado.textContent = r.ok ? tx.direccionGuardada : error(r);
+    ultimoJson = "";
+    recargar();
+  });
+
+  conectar.addEventListener("click", async () => {
+    conectar.disabled = true;
+    resultado.className = "resultado";
+    resultado.textContent = tx.conectando;
+    const cuerpo = { credential: clave.value.trim() };
+    if (direccion.value.trim() !== direccionGuardada) cuerpo.server_url = direccion.value.trim();
+    const r = await llamar("POST", "/api/v1/cloud/enroll", cuerpo);
+    if (!r.ok) {
+      resultado.className = "resultado aviso";
+      resultado.textContent = error(r);
+      revisar();
+      return;
+    }
+    clave.value = "";
+    resultado.className = "resultado aviso-ok";
+    resultado.textContent = tx.conectado;
+    mostrarToast(tx.conectado, true);
+    ultimoJson = "";
+    recargar();
+  });
+
+  enviar.addEventListener("click", async () => {
+    enviar.disabled = true;
+    resultado.className = "resultado";
+    resultado.textContent = tx.enviando;
+    const r = await llamar("POST", "/api/v1/cloud/sync");
+    if (!r.ok) {
+      resultado.className = "resultado aviso";
+      resultado.textContent = error(r);
+      enviar.disabled = false;
+      return;
+    }
+    setTimeout(() => { resultado.textContent = ""; ultimoJson = ""; recargar(); }, 3500);
+    setTimeout(() => { enviar.disabled = !(vista && vista.enrolled); }, 3500);
+  });
+
+  rutasInput.addEventListener("change", async () => {
+    const r = await llamar("PUT", "/api/v1/cloud/settings", { send_paths: rutasInput.checked });
+    if (!r.ok) {
+      rutasInput.checked = !rutasInput.checked;
+      resultado.className = "resultado aviso";
+      resultado.textContent = error(r);
+    }
+  });
+
+  caja.querySelector("h2").after(ayuda);
+  recargar();
+  const temporizador = setInterval(() => {
+    if (!document.body.contains(caja)) { clearInterval(temporizador); return; }
+    if (!document.getElementById("pantalla-ajustes").hidden) recargar();
+  }, 5000);
   return caja;
 }
