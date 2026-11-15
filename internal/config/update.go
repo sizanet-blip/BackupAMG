@@ -139,13 +139,14 @@ func marshalFile(cfg Config) ([]byte, error) {
 		Port int `yaml:"port"`
 	}
 	doc := struct {
-		Agent      agent      `yaml:"agent"`
-		Backup     backup     `yaml:"backup"`
-		Repository repository `yaml:"repository"`
-		Schedule   schedule   `yaml:"schedule"`
-		Retention  retention  `yaml:"retention"`
-		Verify     verify     `yaml:"verify"`
-		Panel      panel      `yaml:"panel"`
+		Agent      agent         `yaml:"agent"`
+		Backup     backup        `yaml:"backup"`
+		Repository repository    `yaml:"repository"`
+		Schedule   schedule      `yaml:"schedule"`
+		Retention  retention     `yaml:"retention"`
+		Verify     verify        `yaml:"verify"`
+		Panel      panel         `yaml:"panel"`
+		Replicas   []fileReplica `yaml:"replicas,omitempty"`
 	}{
 		Agent: agent{Name: cfg.Agent.Name},
 		Backup: backup{
@@ -171,6 +172,8 @@ func marshalFile(cfg Config) ([]byte, error) {
 		},
 		Verify: verify{EveryDays: cfg.Verify.EveryDays, ReadDataSubset: cfg.Verify.ReadDataSubset},
 		Panel:  panel{Port: cfg.Panel.Port},
+		// Las copias adicionales se conservan al guardar Ajustes.
+		Replicas: fileReplicas(cfg.Replicas),
 	}
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)

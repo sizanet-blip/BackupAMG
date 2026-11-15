@@ -99,7 +99,7 @@ function pintarHistorial() {
       descripcion.textContent = fraseActividad(item);
       const medida = document.createElement("span");
       medida.className = "nota";
-      medida.textContent = (item.type === "verify" ? "" : tamano(item.data_added_bytes) + " · ") + duracion(item.duration_seconds);
+      medida.textContent = (item.type === "verify" || item.type === "replica" ? "" : tamano(item.data_added_bytes) + " · ") + duracion(item.duration_seconds);
       const cuando = document.createElement("span");
       cuando.className = "nota";
       cuando.textContent = fechaRelativa(item.finished_at);

@@ -76,12 +76,14 @@ func destinationView(cfg *config.Config) map[string]any {
 	resolved := ""
 	connected := false
 	var free int64
+	label := ""
 	if located, err := system.Locate(cfg.Repository.Path, cfg.Repository.VolumeID); err == nil {
 		resolved = located
 		info, statErr := os.Stat(located)
 		connected = statErr == nil && info.IsDir()
 		if connected {
 			free, _ = system.FreeBytes(located)
+			label = system.VolumeLabel(located)
 		}
 	}
 	return map[string]any{
@@ -91,6 +93,7 @@ func destinationView(cfg *config.Config) map[string]any {
 		"kind":       kind,
 		"connected":  connected,
 		"free_bytes": free,
+		"label":      label,
 	}
 }
 
@@ -277,38 +280,8 @@ func changePassword(raw []byte) ([]string, error) {
 	if len(problems) > 0 {
 		return problems, nil
 	}
-	cfg, err := config.Load(paths.ConfigPath())
-	if err != nil {
-		return nil, err
-	}
-	resolved, err := system.Locate(cfg.Repository.Path, cfg.Repository.VolumeID)
-	if err != nil {
-		return []string{"Conecta el destino antes de cambiar la contraseña."}, nil
-	}
-	if !reachable(resolved) {
-		return []string{"Conecta el destino antes de cambiar la contraseña."}, nil
-	}
-	old, err := secrets.Open(cfg.Repository.PasswordEncrypted)
-	if err != nil {
-		return nil, err
-	}
-	if dirExistsAt(resolved) && resticRepo(resolved) {
-		exe, err := restic.Executable()
-		if err != nil {
-			return nil, err
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-		if err := restic.ChangePassword(ctx, exe, resolved, old, body.Password); err != nil {
-			return nil, err
-		}
-		if saveErr := saveNewPassword(body.Password); saveErr != nil {
-			_ = restic.ChangePassword(ctx, exe, resolved, body.Password, old)
-			return nil, saveErr
-		}
-		return nil, nil
-	}
-	return nil, saveNewPassword(body.Password)
+	// Cambia la contraseña en la copia principal y en todas las copias adicionales (password.go).
+	return changePasswordEverywhere(body.Password)
 }
 
 func saveNewPassword(password string) error {

@@ -422,6 +422,8 @@ function pintarCopiar() {
       alCerrar: () => {
         exploradorCopiarAbierto = false;
         exploradorCopiar.raiz.hidden = true;
+        const boton = document.querySelector("#pantalla-copiar [aria-expanded]");
+        if (boton) { boton.setAttribute("aria-expanded", "false"); boton.focus(); }
       }
     });
   }
@@ -433,7 +435,9 @@ function pintarCopiar() {
   anadir.type = "button";
   anadir.className = "secundario";
   anadir.textContent = "+ " + textos.anadirOtra;
+  anadir.setAttribute("aria-expanded", exploradorCopiarAbierto ? "true" : "false");
   anadir.addEventListener("click", () => {
+    anadir.setAttribute("aria-expanded", "true");
     exploradorCopiarAbierto = true;
     explorar.hidden = false;
     explorador.cargarSiHaceFalta();

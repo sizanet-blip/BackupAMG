@@ -47,6 +47,7 @@ func runLoop(ctx context.Context, logger *logging.Logger) int {
 			return 1
 		}
 	}
+	go replicaLoop(ctx, logger)
 	runSchedule(ctx, logger, cfg)
 	return 0
 }

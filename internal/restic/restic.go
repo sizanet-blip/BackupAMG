@@ -225,8 +225,14 @@ func command(ctx context.Context, exe string, args ...string) *exec.Cmd {
 }
 
 func run(ctx context.Context, exe, password, repo string, args []string, onLine func(Line)) (int, string, string, error) {
+	return runWithEnv(ctx, exe, password, repo, nil, args, onLine)
+}
+
+// runWithEnv es run con variables de entorno añadidas (por ejemplo la contraseña del repositorio
+// de origen en `restic copy`). Los secretos van siempre por el entorno, nunca en los argumentos.
+func runWithEnv(ctx context.Context, exe, password, repo string, extraEnv []string, args []string, onLine func(Line)) (int, string, string, error) {
 	cmd := command(ctx, exe, args...)
-	cmd.Env = childEnv(os.Environ(), password, repo)
+	cmd.Env = append(childEnv(os.Environ(), password, repo), extraEnv...)
 	cmd.WaitDelay = 3 * time.Second
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -292,7 +298,8 @@ func childEnv(base []string, password, repo string) []string {
 	for _, entry := range base {
 		name, _, _ := strings.Cut(entry, "=")
 		switch strings.ToUpper(name) {
-		case "RESTIC_PASSWORD", "RESTIC_PASSWORD_FILE", "RESTIC_PASSWORD_COMMAND", "RESTIC_NEW_PASSWORD", "RESTIC_NEW_PASSWORD_FILE", "RESTIC_REPOSITORY", "RESTIC_REPOSITORY_FILE":
+		case "RESTIC_PASSWORD", "RESTIC_PASSWORD_FILE", "RESTIC_PASSWORD_COMMAND", "RESTIC_NEW_PASSWORD", "RESTIC_NEW_PASSWORD_FILE", "RESTIC_REPOSITORY", "RESTIC_REPOSITORY_FILE",
+			"RESTIC_FROM_PASSWORD", "RESTIC_FROM_PASSWORD_FILE", "RESTIC_FROM_PASSWORD_COMMAND", "RESTIC_FROM_REPOSITORY", "RESTIC_FROM_REPOSITORY_FILE", "RESTIC_FROM_KEY_HINT":
 			continue
 		}
 		env = append(env, entry)

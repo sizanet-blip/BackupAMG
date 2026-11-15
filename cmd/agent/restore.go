@@ -15,9 +15,12 @@ import (
 	"backup-agent/internal/restic"
 	"backup-agent/internal/restore"
 	"backup-agent/internal/status"
+	"backup-agent/internal/system"
 )
 
 type restoreJob struct {
+	// Replica es la copia adicional de la que se recupera. Vacío es la copia principal.
+	Replica   string
 	Snapshot  string
 	Paths     []string
 	Mode      string
@@ -25,14 +28,40 @@ type restoreJob struct {
 	Overwrite bool
 }
 
-func listSnapshots() (any, error) {
-	cfg, password, exe, err := openRuntime()
+// repoFor devuelve el repositorio del que se recupera: el principal o una copia adicional.
+// La copia adicional tiene que estar conectada y ser un repositorio con la misma contraseña.
+func repoFor(replica string) (cfg *config.Config, repo, password, exe string, err error) {
+	cfg, password, exe, err = openRuntime()
+	if err != nil {
+		return nil, "", "", "", err
+	}
+	if strings.TrimSpace(replica) == "" {
+		return cfg, cfg.Repository.Path, password, exe, nil
+	}
+	for _, r := range cfg.Replicas {
+		if r.ID != replica {
+			continue
+		}
+		located, locErr := system.Locate(r.Path, r.VolumeID)
+		if locErr != nil || !dirExistsAt(located) {
+			return nil, "", "", "", fmt.Errorf("la copia en «%s» no está conectada", r.Name)
+		}
+		if !resticRepo(located) {
+			return nil, "", "", "", fmt.Errorf("la copia en «%s» todavía no tiene copias", r.Name)
+		}
+		return cfg, located, password, exe, nil
+	}
+	return nil, "", "", "", fmt.Errorf("no se encontró esa copia adicional")
+}
+
+func listSnapshots(replica string) (any, error) {
+	_, repo, password, exe, err := repoFor(replica)
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	items, err := restic.Snapshots(ctx, exe, cfg.Repository.Path, password)
+	items, err := restic.Snapshots(ctx, exe, repo, password)
 	if err != nil {
 		return nil, err
 	}
@@ -42,18 +71,18 @@ func listSnapshots() (any, error) {
 	return items, nil
 }
 
-func listSnapshotFiles(id, dir string) (any, error) {
+func listSnapshotFiles(id, dir, replica string) (any, error) {
 	if !validSnapshot(id) {
 		return nil, fmt.Errorf("no se encontró esa copia")
 	}
-	cfg, password, exe, err := openRuntime()
+	_, repo, password, exe, err := repoFor(replica)
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	if strings.TrimSpace(dir) == "" {
-		items, err := restic.Snapshots(ctx, exe, cfg.Repository.Path, password)
+		items, err := restic.Snapshots(ctx, exe, repo, password)
 		if err != nil {
 			return nil, err
 		}
@@ -68,10 +97,10 @@ func listSnapshotFiles(id, dir string) (any, error) {
 		}
 		return nil, fmt.Errorf("no se encontró esa copia")
 	}
-	return restic.ListChildren(ctx, exe, cfg.Repository.Path, password, id, dir)
+	return restic.ListChildren(ctx, exe, repo, password, id, dir)
 }
 
-func findSnapshot(id, pattern string) (any, error) {
+func findSnapshot(id, pattern, replica string) (any, error) {
 	if !validSnapshot(id) {
 		return nil, fmt.Errorf("no se encontró esa copia")
 	}
@@ -79,13 +108,13 @@ func findSnapshot(id, pattern string) (any, error) {
 	if pattern == "" || len(pattern) > 80 || strings.ContainsAny(pattern, "\r\n") {
 		return nil, fmt.Errorf("escribe el nombre o parte del nombre")
 	}
-	cfg, password, exe, err := openRuntime()
+	_, repo, password, exe, err := repoFor(replica)
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	return restic.Find(ctx, exe, cfg.Repository.Path, password, id, pattern)
+	return restic.Find(ctx, exe, repo, password, id, pattern)
 }
 
 func suggestedTarget() (any, error) {
@@ -105,6 +134,7 @@ func suggestedTarget() (any, error) {
 
 func startRestore(raw []byte) ([]string, error) {
 	var body struct {
+		ReplicaID string   `json:"replica_id"`
 		Snapshot  string   `json:"snapshot"`
 		Paths     []string `json:"paths"`
 		Mode      string   `json:"mode"`
@@ -134,7 +164,13 @@ func startRestore(raw []byte) ([]string, error) {
 		seen[key] = struct{}{}
 		chosen = append(chosen, path)
 	}
-	job := restoreJob{Snapshot: body.Snapshot, Paths: chosen, Mode: body.Mode, Overwrite: body.Overwrite}
+	job := restoreJob{Replica: strings.TrimSpace(body.ReplicaID), Snapshot: body.Snapshot, Paths: chosen, Mode: body.Mode, Overwrite: body.Overwrite}
+	if job.Replica != "" {
+		// Se comprueba ahora para avisar en el momento y no cuando ya está en marcha.
+		if _, _, _, _, err := repoFor(job.Replica); err != nil {
+			return []string{"No se puede recuperar de esa copia: " + err.Error() + "."}, nil
+		}
+	}
 	if body.Mode == "original" {
 		job.Target = "ubicación original"
 	} else if body.Mode == "folder" {
@@ -148,6 +184,11 @@ func startRestore(raw []byte) ([]string, error) {
 		}
 		if overlaps(target, cfg.Repository.Path) {
 			return []string{"Esa carpeta está dentro del destino de las copias. Elige otra."}, nil
+		}
+		for _, r := range cfg.Replicas {
+			if overlaps(target, r.Path) {
+				return []string{"Esa carpeta está dentro de una de las copias adicionales. Elige otra."}, nil
+			}
 		}
 		if err := os.MkdirAll(target, 0o755); err != nil {
 			return []string{"No se pudo crear la carpeta de recuperación."}, nil
@@ -202,12 +243,12 @@ func (l *liveJob) runRestore(parent context.Context, logger interface {
 		return
 	}
 	defer stop()
-	cfg, password, exe, err := openRuntime()
+	_, repo, password, exe, err := repoFor(job.Replica)
 	if err != nil {
 		l.setRestore(status.RestoreResult{Status: "failed", Message: err.Error(), Errors: []string{err.Error()}})
 		return
 	}
-	logger.Info("Recuperación iniciada", "snapshot", job.Snapshot, "mode", job.Mode, "count", len(job.Paths), "target", job.Target)
+	logger.Info("Recuperación iniciada", "replica", job.Replica, "snapshot", job.Snapshot, "mode", job.Mode, "count", len(job.Paths), "target", job.Target)
 	onStatus := func(progress restic.Status) { l.note(progress) }
 	if job.Mode == "original" {
 		temp, err := os.MkdirTemp("", "ba-restore-")
@@ -216,7 +257,7 @@ func (l *liveJob) runRestore(parent context.Context, logger interface {
 			return
 		}
 		defer os.RemoveAll(temp)
-		if _, err := restic.Restore(ctx, exe, cfg.Repository.Path, password, job.Snapshot, temp, job.Paths, true, onStatus); err != nil {
+		if _, err := restic.Restore(ctx, exe, repo, password, job.Snapshot, temp, job.Paths, true, onStatus); err != nil {
 			if ctx.Err() != nil {
 				l.setRestore(cancelledRestore(job.Mode, job.Target, 0))
 				logger.Info("Recuperación cancelada por el usuario", "mode", job.Mode)
@@ -231,7 +272,7 @@ func (l *liveJob) runRestore(parent context.Context, logger interface {
 		logger.Info("Recuperación terminada", "files", files, "renamed", renamed)
 		return
 	}
-	result, err := restic.Restore(ctx, exe, cfg.Repository.Path, password, job.Snapshot, job.Target, job.Paths, false, onStatus)
+	result, err := restic.Restore(ctx, exe, repo, password, job.Snapshot, job.Target, job.Paths, false, onStatus)
 	if ctx.Err() != nil {
 		l.setRestore(cancelledRestore(job.Mode, job.Target, result.Files))
 		logger.Info("Recuperación cancelada por el usuario", "mode", job.Mode, "files", result.Files, "target", job.Target)

@@ -222,6 +222,8 @@ func backupReport(cfg *config.Config, started, finished time.Time, freeBytes int
 }
 
 func rememberBackup(rep report.Report, fileName string) error {
+	stateMu.Lock()
+	defer stateMu.Unlock()
 	st, err := state.Load(paths.StatePath())
 	if err != nil {
 		return err
@@ -231,6 +233,9 @@ func rememberBackup(rep report.Report, fileName string) error {
 		Status:     rep.Status,
 		SnapshotID: rep.SnapshotID,
 		Report:     fileName,
+	}
+	if rep.Status != restic.StatusFailed && rep.SnapshotID != "" {
+		st.LastGoodSnapshot = rep.SnapshotID
 	}
 	return state.Save(paths.StatePath(), st)
 }

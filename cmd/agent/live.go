@@ -90,6 +90,12 @@ func (l *liveJob) bind(ctx context.Context, logger *logging.Logger, srv *panel.S
 		Folders:          listFolders,
 		Shortcuts:        folderShortcuts,
 		Estimate:         estimateSources,
+		Replicas:         replicaListing,
+		AddReplica:       addReplica,
+		UpdateReplica:    updateReplica,
+		RemoveReplica:    removeReplica,
+		TestReplica:      testReplica,
+		RunReplica:       runReplicaNow,
 	})
 }
 
@@ -97,7 +103,8 @@ func (l *liveJob) request(kind string) error {
 	l.mu.Lock()
 	parent := l.parent
 	logger := l.logger
-	busy := l.cancel != nil || l.starting
+	// Una copia manual tiene prioridad sobre una copia adicional en curso: la interrumpe.
+	busy := (l.cancel != nil && !(kind == status.ActivityBackup && l.kind == status.ActivityReplica)) || l.starting
 	l.mu.Unlock()
 	if parent == nil || logger == nil {
 		return errNotReady
@@ -106,7 +113,7 @@ func (l *liveJob) request(kind string) error {
 		return errBusy
 	}
 	l.mu.Lock()
-	if l.cancel != nil || l.starting {
+	if (l.cancel != nil && !(kind == status.ActivityBackup && l.kind == status.ActivityReplica)) || l.starting {
 		l.mu.Unlock()
 		return errBusy
 	}
@@ -122,6 +129,7 @@ func (l *liveJob) request(kind string) error {
 		}()
 		if kind == status.ActivityBackup {
 			runWithRetries(parent, logger, report.TriggerManual)
+			kickReplicas()
 			return
 		}
 		cfg, password, exe, err := openRuntime()
@@ -134,6 +142,25 @@ func (l *liveJob) request(kind string) error {
 		}
 	}()
 	return nil
+}
+
+// cancelKind cancela la tarea en curso solo si es de ese tipo. Devuelve si había una.
+func (l *liveJob) cancelKind(kind string) bool {
+	l.mu.Lock()
+	cancel := l.cancel
+	match := cancel != nil && l.kind == kind
+	l.mu.Unlock()
+	if match {
+		cancel()
+	}
+	return match
+}
+
+// idle dice si no hay ninguna tarea en curso.
+func (l *liveJob) idle() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.cancel == nil
 }
 
 func (l *liveJob) stop() error {
@@ -284,12 +311,15 @@ func (l *liveJob) snapshot() any {
 		view.NextBackup = next.Format(time.RFC3339)
 	}
 	_, overdue := scheduler.MostRecentDueOn(now, lastAttemptTime(), cfg.Schedule.Times, cfg.Schedule.Weekdays)
+	replicas, replicaStale := replicaViews(cfg, st, now)
+	view.Replicas = replicas
 	view.Level = status.Decide(status.Facts{
-		Now:        now,
-		Activity:   kind,
-		Last:       view.LastBackup,
-		StaleAfter: time.Duration(cfg.Schedule.StaleAfterDays) * 24 * time.Hour,
-		Overdue:    overdue,
+		Now:          now,
+		Activity:     kind,
+		Last:         view.LastBackup,
+		StaleAfter:   time.Duration(cfg.Schedule.StaleAfterDays) * 24 * time.Hour,
+		Overdue:      overdue,
+		ReplicaStale: replicaStale,
 	})
 	if kind == status.ActivityBackup || kind == status.ActivityRestore {
 		speed := 0.0

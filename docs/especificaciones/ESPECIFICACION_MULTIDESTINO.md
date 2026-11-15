@@ -2,7 +2,7 @@
 
 > Documento para el asistente de programación.
 > Continúa `ESPECIFICACION_AGENTE.md`, `ESPECIFICACION_INTERFAZ.md` y `ESPECIFICACION_DISENO.md`.
-> **Estado: borrador para después de las pruebas reales y del uso piloto** (hoja de ruta, punto 2). No empezar antes sin confirmación del usuario.
+> **Estado (nov 2026): en desarrollo, fases 1 a 3 autorizadas por el usuario.** Fases 1 (núcleo) hechas en Go y probadas con restic real; faltan el panel (2) y restaurar desde un secundario (3). La fase 4 (nube) sigue exigiendo preguntar antes. Las secciones 1 a 15 son el diseño original; **la sección 16 recoge las correcciones y decisiones tras contrastarlo con el código real y prevalece sobre ellas.**
 > **Objetivo:** que un equipo pueda guardar sus copias en **más de un sitio** (por ejemplo, disco local + disco externo + nube), siguiendo la regla 3-2-1: tres copias de los datos, en dos tipos de soporte distintos, una de ellas fuera del sitio.
 
 ---
@@ -30,10 +30,10 @@ Copia programada
 ```
 
 - La réplica usa el mecanismo de copia entre repositorios del motor (`restic copy`). **No reimplementar el motor.**
-- Los repositorios secundarios se crean con los mismos parámetros que el principal para que `restic copy` pueda trabajar entre ellos. **Decisión pendiente:** usar la misma contraseña que el principal (más simple, una sola que guardar) o una distinta por destino (más seguro si un destino se compromete). Recomendación: **la misma contraseña**, y dejarlo claro en la hoja de recuperación.
+- Los repositorios secundarios se crean con los mismos parámetros que el principal para que `restic copy` pueda trabajar entre ellos. **Decisión tomada:** la misma contraseña que el principal (una sola que guardar), sin opción en el asistente. Dejarlo claro en la hoja de recuperación. Una contraseña distinta por destino solo se plantea con la nube (fase 4).
 - Si no hay copia nueva que replicar, no se hace nada (no se repite trabajo).
 - Si la réplica de un destino falla, el informe de la copia principal **sigue siendo correcto**; el fallo se anota en el estado de ese destino y se avisa (ver §5).
-- Reglas de CLAUDE.md que siguen valiendo: nada de PowerShell/`cmd`/`rundll32` lanzados por el programa, nada de UPX, contraseña solo por `RESTIC_PASSWORD`, nunca en claro en logs ni argumentos.
+- Reglas de CLAUDE.md que siguen valiendo: nada de PowerShell/`cmd`/`rundll32` lanzados por el programa, nada de UPX, contraseña solo por entorno (`RESTIC_PASSWORD` y, en la réplica, `RESTIC_FROM_PASSWORD`), nunca en claro en logs ni argumentos.
 
 ---
 
@@ -108,7 +108,7 @@ Notificaciones de Windows con el mismo criterio que hoy: título claro y acción
 - **`daily_at` (recomendado en la nube):** una vez al día a una hora fijada, para no saturar la conexión en horas de trabajo.
 - Límite de velocidad opcional para la nube (`limit_upload_kbps`), por defecto sin límite.
 - Si el destino no está disponible (USB desconectado, sin red), se reintenta en la siguiente ocasión con el mismo `max_retries`/`retry_delay_minutes` que la copia principal, sin bloquear nada más.
-- Una réplica en curso **no impide** que empiece la siguiente copia principal. **Decisión pendiente:** si hay conflicto de bloqueo sobre el repositorio principal, la copia principal tiene prioridad y la réplica se interrumpe y se reintenta.
+- Una réplica en curso **no impide** que empiece la siguiente copia principal. **Decisión tomada:** prioridad absoluta a la copia principal: si llega, la réplica en curso se cancela y se reintenta después (ver §16.2).
 
 ---
 
@@ -211,3 +211,59 @@ Solo añadir rutas y campos opcionales; mantener las existentes. Mismas reglas d
 - Probar antes de decir que algo está hecho: compilar no basta; reiniciar el binario afectado y comprobar el síntoma concreto, con un destino secundario real (USB y, en la fase 4, nube).
 - Textos en `textos.js`, en español natural y sin términos técnicos fuera de Ajustes y del detalle.
 - No hacer commit ni push salvo que el usuario lo pida.
+
+---
+
+## 16. Correcciones y decisiones tras contrastar con el código (nov 2026)
+
+Este apartado prevalece sobre lo anterior. La especificación se escribió sin mirar el código; esto es lo que cambia.
+
+### 16.1 Decisiones del usuario
+
+1. **Contraseña:** la misma que la del principal, sin opción en el asistente.
+2. **Réplica contra copia principal:** prioridad absoluta a la principal. La réplica se cancela, se reintenta después, y tras `3` interrupciones seguidas espera a un hueco de más de una hora hasta la siguiente copia (estado «Pendiente», sin alarma). Un fallo de réplica nunca cambia el estado de la copia principal ni pone el semáforo en rojo (solo ámbar por antigüedad, fase 2).
+
+### 16.2 Correcciones
+
+- **a) Guardar Ajustes borraba la sección.** `config.Parse` rechaza campos desconocidos y `marshalFile` (`internal/config/update.go`) escribe una estructura fija: si no se amplía, cualquier guardado de Ajustes elimina `replicas`. Ya se escribe también ahí, con test de ida y vuelta. `SetDestination`, `SetReplicas` y el cambio de contraseña editan el árbol YAML y la conservan. Una configuración con `replicas` no se puede abrir con un agente anterior (campo desconocido); no hay vuelta atrás de versión con réplicas configuradas.
+- **b) Contraseña del origen en `restic copy`.** La contraseña solo iba por `RESTIC_PASSWORD`. Para copiar entre repositorios se pasa también `RESTIC_FROM_PASSWORD` (comprobado con restic 0.19.1) y `--from-repo`. Se limpian del entorno heredado todas las variables `RESTIC_FROM_*` y nunca viaja en argumentos ni en logs ni en mensajes de error.
+- **c) Deduplicación.** El repositorio secundario se crea con `restic init --from-repo <principal> --copy-chunker-params`; si no, lo copiado no se reconoce como igual y ocupa hasta el doble.
+- **d) Estado e informes.** `state.json` gana, de forma opcional, `last_good_snapshot` (instantánea de la última copia correcta o con avisos; no la borra una copia fallida posterior) y `replicas`: un mapa por id con `last_success_at`, `last_snapshot` (instantánea principal ya replicada), `last_attempt_at`, `last_status` (`success`, `failed`, `offline`, `interrupted`), `last_error`, `report` e `interrupted`. «Pendiente» = la última instantánea correcta del principal no está en la adicional. Los informes `type: "replica"` añaden `replica_id`, `replica_name` y `snapshots_copied` solo en ese tipo (`omitempty`): los de copia y verificación no cambian. Solo se escribe informe de réplica si se copió algo o falló; «sin conexión» e «interrumpida» no generan informe.
+- **e) Concurrencia.** La réplica corre en su propio hilo (`replicaLoop`), no en el del planificador, y usa la sala común de actividad (`live.enter`, tipo `replica`) para no solaparse con copia, verificación ni restauración. La copia principal (programada o «Copiar ahora») cancela una réplica en curso y espera a que suelte la sala. No empieza una réplica si la próxima copia principal está a menos de 10 minutos (60 si ya fue interrumpida 3 veces), ni mientras corre la verificación posterior a la copia. Tras fallar, no se reintenta antes de 30 minutos. Se comprueba cada 5 minutos, tras cada copia y al cambiar la configuración; así un disco que se reconecta (aunque cambie de letra) se pone al día solo. La actividad `replica` no pone el semáforo en azul.
+- **f) Validación de rutas.** Una copia adicional no puede ser la misma carpeta que la principal, ni estar dentro, ni contenerla; lo mismo con cada carpeta de origen y entre copias adicionales (`config.PathsOverlap`, sin distinguir mayúsculas). `type` es opcional (se deduce de la ruta: `unc` si empieza por `\`); `s3` se rechaza con un mensaje claro. `daily_at` exige `time` (HH:MM). Ids: minúsculas, números, guion y guion bajo, hasta 40 caracteres.
+- **g) Restaurar desde un secundario (fase 3).** Hoy `snapshots`, `files`, `find` y `restore` usan siempre `cfg.Repository.Path`. Hay que parametrizar el repositorio por `replica_id` opcional en la API (por defecto el principal). Se hace en la fase 3.
+- **h) Retención de la adicional.** Tras copiar algo, se aplica en la adicional la misma política (`forget`, con `prune` si está activado). Si falla, la réplica sigue siendo correcta y el aviso queda en `errors` del informe.
+- **i) Nube (S3).** Fuera de la fase 1-3. No hay campos `s3` activos en el formato.
+
+### 16.3 Implementación de la fase 1 (hecha)
+
+- `internal/config/replica.go`: tipo `Replica`, validación, `SetReplicas`, `ValidateReplicas`.
+- `internal/restic/replica.go`: `InitReplica` y `Copy`.
+- `internal/state`, `internal/report`, `internal/status`: campos y tipo nuevos.
+- `cmd/agent/replica.go`: `replicaLoop`, `runReplicas`, `replicateOne`, prioridad de la principal. Comando de consola `agent replicate [id]`.
+- Pruebas: Go (config, estado, informes, restic real en carpetas temporales, decisión de cuándo replicar) y agente real con dos carpetas, réplica interrumpida por una copia manual y reanudada, y destino sin conexión.
+### 16.4 Implementación de la fase 2 (hecha)
+
+- **API** (solo administrador, con sesión, Origin y CSRF como el resto): `GET /api/v1/replicas`, `POST /api/v1/replicas` (prepara la carpeta con la contraseña del principal antes de guardar), `PUT` y `DELETE /api/v1/replicas/{id}` (quitar no borra nada en el destino), `POST /api/v1/replicas/{id}/run` y `POST /api/v1/replicas/test` (recibe la carpeta; sirve para probar antes de guardar y para una ya guardada). Diferencia con §10: la prueba no lleva `{id}`. `PUT` cambia nombre, pausa y cuándo; para otra carpeta se quita y se añade una nueva.
+- **Estado:** `GET /api/v1/status` incluye `replicas` (sin rutas, lo ven todos los usuarios) con estado `ok`, `pending`, `offline`, `failed` o `disabled`, `stale` y `days_behind`. El semáforo pasa de verde a ámbar si una copia adicional activa lleva más de `schedule.stale_after_days` sin ponerse al día (desde su última réplica correcta o desde que se añadió); nunca a rojo.
+- **Panel:** «Destino» pasa a «Destinos»: tarjeta «Copia principal», «Copias adicionales» (pastillas con texto, causa y acción, Actualizar ahora, Probar, Editar, Quitar con confirmación propia), asistente de 3 pasos que reutiliza el selector de carpetas, consejo informativo 3-2-1 y línea «Copias adicionales» en Inicio con enlace. Nuevo `copias.js`.
+- La carpeta de la copia principal se ve como un resumen (ruta, disco, espacio libre, estado) con un botón «Cambiar carpeta» (`aria-expanded`) que despliega el selector; «Cancelar» o Esc lo pliega y devuelve el foco. Sin destino todavía, se muestra desplegado.
+
+### 16.5 Implementación de la fase 3 (hecha)
+
+- **API compatible:** `GET /api/v1/snapshots`, `.../{id}/files` y `.../{id}/find` aceptan `?replica=<id>`; `POST /api/v1/restore` acepta `replica_id`. Sin ellos, siempre la copia principal. Solo administrador, como antes. La copia adicional tiene que estar conectada y ser un repositorio; si no, error claro.
+- **Panel:** en Restaurar, si hay copias adicionales, aparece «Recuperar desde:» con la copia principal y cada copia adicional (las desconectadas, desactivadas y marcadas «sin conexión»). Si la principal no está disponible se elige sola la primera adicional conectada, con un aviso de hasta cuándo está actualizada.
+- La carpeta de recuperación no puede estar dentro de ninguna copia adicional.
+- Probado con el agente real: con la copia principal quitada, se restauró desde la adicional y los ficheros eran idénticos (hash), la base de datos pasó su comprobación de integridad y el documento se abrió.
+
+### 16.6 Cambio de contraseña con varios destinos (hecho)
+
+Problema que se encontró al probar: el cambio de contraseña solo cambiaba la copia principal; las copias adicionales dejaban de replicarse y de poder abrirse. Ahora se cambia en todos los destinos, en dos fases, y nunca quedan repositorios con contraseñas distintas en uso:
+
+0. Todos los repositorios (principal y cada copia adicional, también las pausadas) tienen que estar conectados y abrirse con la contraseña actual. Si no, **se bloquea** y se dice cuáles («Conecta “X” o quítala antes de cambiar la contraseña»). No hay modo «pendiente de contraseña». Se hace dentro de la sala de actividad; una copia programada que llega mientras tanto espera unos segundos.
+A. En cada repositorio se añade la contraseña nueva (`restic key add`, con fichero temporal; nunca en argumentos ni en logs) y se comprueba que abre. Si algo falla, se quitan las nuevas ya añadidas y no cambia nada.
+C. Se guarda la nueva en la configuración (DPAPI). Un corte en cualquier punto deja un estado válido: las dos contraseñas abren todos los repositorios hasta el final.
+B. Se quita la antigua de cada repositorio. Si alguna falla (por ejemplo, la adicional se desconecta justo entonces), la nueva ya está en uso, se avisa, y la clave antigua queda anotada en `state.json` (`pending_key_removals`, solo identificadores) para quitarla en cuanto el destino vuelva.
+- Mensaje claro cuando una copia adicional tiene otra contraseña: «Esta copia adicional tiene otra contraseña que la copia principal.»
+- Panel: la tarjeta «Contraseña de las copias» pasa de Destinos a **Ajustes → Seguridad**, con el aviso de que protege todos los destinos, la confirmación propia y la oferta de volver a imprimir la hoja de recuperación (que ahora lista todos los destinos). En Destinos queda un enlace.
+- **Pendiente (anotado, no hecho): reparar una copia adicional ya rota.** Una acción «Poner la contraseña actual» que pida la contraseña con la que abre esa copia y le añada la actual (`key add`), para casos creados con una versión anterior. En el piloto no debería hacer falta.

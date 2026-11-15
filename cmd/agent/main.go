@@ -70,6 +70,13 @@ func run(args []string) int {
 			return 2
 		}
 		return verifyNow()
+	case "replicate":
+		if len(args) > 2 {
+			fmt.Fprintf(os.Stderr, "El comando replicate admite como mucho un identificador.\n\n")
+			usage()
+			return 2
+		}
+		return replicateNow(args[1:])
 	case "install", "uninstall", "start", "stop":
 		if len(args) > 1 {
 			fmt.Fprintf(os.Stderr, "El comando %s no admite argumentos.\n\n", args[0])
@@ -117,6 +124,7 @@ Uso:
   agent init-repo      Crea el repositorio de restic si todavía no existe.
   agent backup-now     Hace una copia inmediata, aplica la retención y termina.
   agent verify         Comprueba el repositorio ahora.
+  agent replicate [id] Pone al día las copias adicionales (todas o la indicada).
   agent install        Registra el servicio de Windows. Hace falta administrador.
   agent uninstall      Quita el servicio de Windows.
   agent start          Arranca el servicio.

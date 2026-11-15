@@ -28,6 +28,7 @@ func signalConfigReload() {
 	case reloadConfig <- struct{}{}:
 	default:
 	}
+	kickReplicas()
 }
 
 // retryWait es el tiempo de espera entre reintentos. Las pruebas lo acortan.
@@ -42,6 +43,8 @@ func runWithRetries(ctx context.Context, logger *logging.Logger, trigger string)
 	}
 	defer backupMu.Unlock()
 
+	waitPasswordChange(ctx)
+	preemptReplicas(logger)
 	ctx, stop, ok := live.enter(ctx, status.ActivityBackup)
 	if !ok {
 		logger.Warn("Ya hay una tarea en curso; esta no se inicia")
@@ -95,6 +98,12 @@ func runWithRetries(ctx context.Context, logger *logging.Logger, trigger string)
 // Solo tras una copia correcta o con avisos. Si la verificación se alarga y se pasa la hora de la
 // siguiente copia, esa copia se hace nada más acabar, para que no se pierda.
 func afterBackup(ctx context.Context, logger *logging.Logger, cfg *config.Config, code int) {
+	// Las copias adicionales esperan a que acabe la verificación y luego se ponen al día.
+	postBackupBusy.Store(true)
+	defer func() {
+		postBackupBusy.Store(false)
+		kickReplicas()
+	}()
 	if code != 0 && code != 3 {
 		return
 	}

@@ -16,6 +16,10 @@ const (
 	ActivityBackup  = "backup"
 	ActivityVerify  = "verify"
 	ActivityRestore = "restore"
+	// ActivityReplica es la réplica a una copia adicional. No cambia el color del semáforo.
+	ActivityReplica = "replica"
+	// ActivityPassword es el cambio de la contraseña en todos los destinos.
+	ActivityPassword = "password"
 )
 
 // View es el estado que consumen la página de inicio y los eventos.
@@ -30,7 +34,9 @@ type View struct {
 	Progress    *Progress      `json:"progress"`
 	Restore     *RestoreResult `json:"restore,omitempty"`
 	Job         *Job           `json:"job,omitempty"`
-	Problem     string         `json:"problem,omitempty"`
+	// Replicas es el estado de las copias adicionales. Falta si no hay ninguna.
+	Replicas []Replica `json:"replicas,omitempty"`
+	Problem  string    `json:"problem,omitempty"`
 }
 
 // Job describe la tarea que está en curso.
@@ -91,12 +97,23 @@ type Facts struct {
 	Last       *Run
 	StaleAfter time.Duration
 	Overdue    bool
+	// ReplicaStale es que alguna copia adicional lleva demasiado sin ponerse al día.
+	// Solo puede pasar el verde a amarillo: una copia adicional nunca pone el semáforo en rojo.
+	ReplicaStale bool
 }
 
 // Decide elige el color del semáforo.
 // Una tarea en curso manda sobre el resto. Rojo es un fallo o más de StaleAfter
 // sin una copia correcta. Amarillo es un aviso o una copia que ya tocaba.
 func Decide(f Facts) string {
+	level := decideMain(f)
+	if level == Green && f.ReplicaStale {
+		return Yellow
+	}
+	return level
+}
+
+func decideMain(f Facts) string {
 	if f.Activity == ActivityBackup || f.Activity == ActivityVerify || f.Activity == ActivityRestore {
 		return Blue
 	}

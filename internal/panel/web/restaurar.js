@@ -16,6 +16,8 @@ function pintarRestaurar() {
   let busqueda = "";
   let pedido = 0;
   let trabajando = false;
+  let fuente = ""; // copia adicional de la que se recupera; vacío es la copia principal
+  let fuenteNombre = "";
 
   const titulo = tituloPagina(textos.menu.restaurar, textos.restaurarAyuda);
   const cuerpo = document.createElement("div");
@@ -35,7 +37,20 @@ function pintarRestaurar() {
   etiquetaCopia.textContent = textos.copiaDel;
   const selectorCopia = document.createElement("select");
   filaCopia.append(etiquetaCopia, selectorCopia);
-  cajaCopia.append(hCopia, filaCopia);
+  // De dónde se recupera: solo aparece si hay copias adicionales.
+  const filaFuente = document.createElement("div");
+  filaFuente.hidden = true;
+  const etiquetaFuente = document.createElement("label");
+  etiquetaFuente.className = "restaurar-copia";
+  const textoFuente = document.createElement("span");
+  textoFuente.textContent = textos.restaurarDesde;
+  const selectorFuente = document.createElement("select");
+  etiquetaFuente.append(textoFuente, selectorFuente);
+  const notaFuente = document.createElement("p");
+  notaFuente.className = "nota";
+  notaFuente.setAttribute("role", "status");
+  filaFuente.append(etiquetaFuente, notaFuente);
+  cajaCopia.append(hCopia, filaFuente, filaCopia);
 
   // ---- 2. Qué recuperar (mismo aspecto que el selector de carpetas)
   const cajaQue = document.createElement("article");
@@ -291,7 +306,7 @@ function pintarRestaurar() {
     lista.append(cargando);
     let respuesta;
     try {
-      respuesta = await fetch("/api/v1/snapshots/" + encodeURIComponent(copiaId) + "/files?path=" + encodeURIComponent(ruta));
+      respuesta = await fetch(conFuente("/api/v1/snapshots/" + encodeURIComponent(copiaId) + "/files?path=" + encodeURIComponent(ruta)));
     } catch (e) {
       if (id === pedido) pintarLista(textos.error);
       return;
@@ -316,7 +331,7 @@ function pintarRestaurar() {
     const id = ++pedido;
     campoRuta.value = textos.resultadosDeBusqueda;
     subir.disabled = true;
-    const respuesta = await fetch("/api/v1/snapshots/" + encodeURIComponent(copiaId) + "/find?q=" + encodeURIComponent(patronBusqueda(texto)));
+    const respuesta = await fetch(conFuente("/api/v1/snapshots/" + encodeURIComponent(copiaId) + "/find?q=" + encodeURIComponent(patronBusqueda(texto))));
     const datos = await respuesta.json().catch(() => []);
     if (id !== pedido) return;
     if (!respuesta.ok) {
@@ -366,11 +381,26 @@ function pintarRestaurar() {
     destino.value = datos.target || "";
   });
 
-  fetch("/api/v1/snapshots").then(async (respuesta) => {
+  function conFuente(url) {
+    return fuente ? url + (url.includes("?") ? "&" : "?") + "replica=" + encodeURIComponent(fuente) : url;
+  }
+
+  function cargarCopias() {
+  selectorCopia.replaceChildren();
+  cuerpo.hidden = false;
+  mensaje.className = "nota";
+  mensaje.textContent = "";
+  seleccion = [];
+  detalleSeleccion = {};
+  copiaId = "";
+  pintarResumen();
+  pintarElegidos();
+  fetch(conFuente("/api/v1/snapshots")).then(async (respuesta) => {
     if (!respuesta.ok) {
+      const dato = await respuesta.json().catch(() => ({}));
       cuerpo.hidden = true;
       mensaje.className = "aviso";
-      mensaje.textContent = textos.error;
+      mensaje.textContent = fuente && dato.error ? dato.error : textos.error;
       return;
     }
     const copias = ((await respuesta.json()) || []).slice().sort((a, b) => new Date(b.time) - new Date(a.time));
@@ -397,6 +427,65 @@ function pintarRestaurar() {
     selectorCopia.value = copias[0].id;
     elegirCopia(copias[0].id, tituloCopia(copias[0].time));
   });
+  }
+
+  // Con copias adicionales se puede elegir de dónde recuperar. Por defecto, la principal;
+  // si no está disponible, la primera copia adicional conectada.
+  async function cargarFuentes() {
+    let datos = null;
+    try {
+      const respuesta = await fetch("/api/v1/replicas");
+      if (respuesta.ok) datos = await respuesta.json();
+    } catch (e) { /* sin copias adicionales: se sigue con la principal */ }
+    const adicionales = datos && datos.replicas ? datos.replicas : [];
+    if (!adicionales.length) {
+      cargarCopias();
+      return;
+    }
+    const principal = datos.primary || {};
+    filaFuente.hidden = false;
+    const opcionPrincipal = document.createElement("option");
+    opcionPrincipal.value = "";
+    opcionPrincipal.textContent = textos.copias.principal + (principal.connected ? "" : " · " + textos.fuenteSinConexion);
+    opcionPrincipal.disabled = !principal.connected;
+    selectorFuente.append(opcionPrincipal);
+    adicionales.forEach((c) => {
+      const opcion = document.createElement("option");
+      opcion.value = c.id;
+      opcion.textContent = c.name + " · " + textos.fuenteAdicional + (c.connected ? "" : " · " + textos.fuenteSinConexion);
+      opcion.disabled = !c.connected;
+      selectorFuente.append(opcion);
+    });
+    const elegible = principal.connected ? "" : (adicionales.find((c) => c.connected) || {}).id;
+    function pintarNotaFuente() {
+      const c = adicionales.find((x) => x.id === fuente);
+      fuenteNombre = c ? c.name : "";
+      if (!c) {
+        notaFuente.className = "nota";
+        notaFuente.textContent = textos.fuenteNotaPrincipal;
+        return;
+      }
+      const hasta = c.last_success_at ? fechaRelativa(c.last_success_at) : textos.nunca;
+      notaFuente.className = principal.connected ? "nota" : "aviso-caja info";
+      notaFuente.textContent = (principal.connected ? "" : textos.fuenteNotaCaida.replace("{nombre}", c.name) + " ") + textos.fuenteNotaAdicional.replace("{cuando}", hasta);
+    }
+    if (elegible === undefined) {
+      cuerpo.hidden = true;
+      mensaje.className = "aviso";
+      mensaje.textContent = textos.fuenteNinguna;
+      return;
+    }
+    fuente = elegible;
+    selectorFuente.value = fuente;
+    pintarNotaFuente();
+    selectorFuente.addEventListener("change", () => {
+      fuente = selectorFuente.value;
+      pintarNotaFuente();
+      cargarCopias();
+    });
+    cargarCopias();
+  }
+  cargarFuentes();
 
   cancelarRestaurar.addEventListener("click", async () => {
     if (!(await confirmarSiNo({
@@ -434,6 +523,7 @@ function pintarRestaurar() {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
       body: JSON.stringify({
+        replica_id: fuente,
         snapshot: copiaId,
         paths: seleccion,
         mode: radioOriginal.checked ? "original" : "folder",

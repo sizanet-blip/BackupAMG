@@ -17,6 +17,8 @@ const (
 
 	TypeBackup = "backup"
 	TypeVerify = "verify"
+	// TypeReplica es la réplica del repositorio principal en una copia adicional.
+	TypeReplica = "replica"
 
 	TriggerScheduled       = "scheduled"
 	TriggerMissedOnStartup = "missed_on_startup"
@@ -52,6 +54,10 @@ type Report struct {
 	Errors               []string      `json:"errors"`
 	Retention            Retention     `json:"retention"`
 	Message              string        `json:"message"`
+	// Solo en los informes de réplica (type "replica"); en los demás no aparecen.
+	ReplicaID       string `json:"replica_id,omitempty"`
+	ReplicaName     string `json:"replica_name,omitempty"`
+	SnapshotsCopied int    `json:"snapshots_copied,omitempty"`
 }
 
 // SkippedFile es un fichero que no se pudo leer.
@@ -94,6 +100,9 @@ type Input struct {
 	Message              string
 	RetentionApplied     bool
 	SnapshotsRemoved     int
+	ReplicaID            string
+	ReplicaName          string
+	SnapshotsCopied      int
 }
 
 // Build monta el informe. Las listas vacías se guardan como [] y no como null.
@@ -156,7 +165,10 @@ func Build(in Input) Report {
 			Applied:          in.RetentionApplied,
 			SnapshotsRemoved: in.SnapshotsRemoved,
 		},
-		Message: in.Message,
+		Message:         in.Message,
+		ReplicaID:       in.ReplicaID,
+		ReplicaName:     in.ReplicaName,
+		SnapshotsCopied: in.SnapshotsCopied,
 	}
 }
 

@@ -43,7 +43,7 @@ function pintarAjustes() {
   const hSoporte = document.createElement("h2");
   hSoporte.textContent = textos.tituloSoporte;
   cajaSoporte.append(hSoporte, nota, generar, aviso);
-  raiz.append(titulo, datos, cajaRegistro, cajaSoporte);
+  raiz.append(titulo, crearSeguridad(), datos, cajaRegistro, cajaSoporte);
 
   function fila(etiqueta, valor) {
     const bloque = document.createElement("article");
@@ -110,4 +110,123 @@ function pintarAjustes() {
     aviso.className = "resultado aviso-ok";
     aviso.textContent = textos.paqueteListo;
   });
+}
+
+// Seguridad: la contraseña común a todos los destinos y la hoja de recuperación.
+function crearSeguridad() {
+  const tx = textos.seguridad;
+  const caja = document.createElement("article");
+  caja.className = "bloque seguridad";
+  const h2 = document.createElement("h2");
+  h2.textContent = tx.titulo;
+  const ayuda = document.createElement("p");
+  ayuda.className = "nota";
+  ayuda.textContent = tx.ayuda;
+  const aviso = document.createElement("p");
+  aviso.className = "peligro";
+  aviso.setAttribute("role", "note");
+  aviso.textContent = tx.aviso;
+
+  let destinos = [];
+  fetch("/api/v1/replicas").then(async (respuesta) => {
+    if (!respuesta.ok) return;
+    const d = await respuesta.json();
+    destinos = [(d.primary && (d.primary.path || d.primary.resolved)) || ""].concat((d.replicas || []).map((c) => c.name + " (" + c.path + ")")).filter(Boolean);
+  }).catch(() => {});
+  const equipo = () => (document.getElementById("equipo") || {}).textContent || "";
+
+  // Hoja de recuperación
+  const hoja = document.createElement("div");
+  hoja.className = "hoja-caja";
+  const hojaTitulo = document.createElement("h3");
+  hojaTitulo.textContent = tx.hojaTitulo;
+  const hojaTexto = document.createElement("p");
+  hojaTexto.className = "nota";
+  hojaTexto.textContent = tx.hojaTexto;
+  const accionesHoja = document.createElement("div");
+  accionesHoja.className = "barra-filtros";
+  const imprimir = document.createElement("button");
+  imprimir.type = "button";
+  imprimir.className = "secundario";
+  imprimir.textContent = textos.imprimir;
+  imprimir.addEventListener("click", () => imprimirHoja(equipo(), destinos));
+  const descargar = document.createElement("button");
+  descargar.type = "button";
+  descargar.className = "secundario";
+  descargar.textContent = textos.hoja;
+  descargar.addEventListener("click", () => descargarHoja(equipo(), destinos));
+  accionesHoja.append(imprimir, descargar);
+  hoja.append(hojaTitulo, hojaTexto, accionesHoja);
+
+  // Cambiar la contraseña
+  const cambio = document.createElement("div");
+  cambio.className = "cambio-clave";
+  const hCambio = document.createElement("h3");
+  hCambio.textContent = tx.cambiarTitulo;
+  const ayudaCambio = document.createElement("p");
+  ayudaCambio.className = "nota";
+  ayudaCambio.textContent = tx.cambiarAyuda;
+  const nueva = secreto(textos.nuevaClave);
+  const repite = secreto(textos.repiteClave);
+  const casilla = document.createElement("label");
+  const marca = document.createElement("input");
+  marca.type = "checkbox";
+  casilla.append(marca, document.createTextNode(textos.guardadaClave));
+  const cambiar = document.createElement("button");
+  cambiar.type = "button";
+  cambiar.className = "secundario";
+  cambiar.textContent = textos.cambiarClave;
+  const falta = notaFalta();
+  const acciones = document.createElement("div");
+  acciones.className = "barra-filtros";
+  acciones.append(cambiar, falta);
+  const resultado = document.createElement("p");
+  resultado.className = "resultado";
+  resultado.setAttribute("role", "status");
+  const revisar = exigir(cambiar, falta, () => {
+    if (!nueva.input.value) return textos.faltaClave;
+    if (nueva.input.value !== repite.input.value) return textos.noCoinciden + ".";
+    if (!marca.checked) return textos.faltaMarca;
+    return "";
+  });
+  [nueva.input, repite.input].forEach((campo) => campo.addEventListener("input", revisar));
+  marca.addEventListener("change", revisar);
+  cambio.append(hCambio, ayudaCambio, nueva.etiqueta, repite.etiqueta, casilla, acciones, resultado);
+
+  cambiar.addEventListener("click", async () => {
+    const total = destinos.length || 1;
+    if (!(await confirmarSiNo({
+      titulo: tx.confirmarTitulo,
+      texto: tx.confirmarTexto.replace("{n}", String(total)),
+      aceptar: tx.confirmarBoton,
+      peligro: true
+    }))) return;
+    cambiar.disabled = true;
+    resultado.className = "resultado";
+    resultado.textContent = tx.cambiando;
+    const respuesta = await fetch("/api/v1/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+      body: JSON.stringify({ password: nueva.input.value, confirm: repite.input.value, acknowledged: marca.checked })
+    });
+    const cuerpo = await respuesta.json().catch(() => ({}));
+    if (!respuesta.ok) {
+      resultado.className = "resultado aviso";
+      resultado.textContent = (cuerpo.fields || [cuerpo.error || textos.error]).join(" ");
+      revisar();
+      return;
+    }
+    nueva.input.value = "";
+    repite.input.value = "";
+    marca.checked = false;
+    revisar();
+    resultado.className = "resultado aviso-ok";
+    resultado.textContent = tx.hecho + (cuerpo.notice ? " " + cuerpo.notice : "");
+    if (await confirmarSiNo({ titulo: tx.reimprimirTitulo, texto: tx.reimprimirTexto + (cuerpo.notice ? " " + cuerpo.notice : ""), aceptar: tx.reimprimirBoton, cancelar: tx.ahoraNo })) {
+      imprimirHoja(equipo(), destinos);
+    }
+  });
+
+  caja.append(h2, ayuda, aviso, hoja, cambio);
+  return caja;
 }

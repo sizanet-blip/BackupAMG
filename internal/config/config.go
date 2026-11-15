@@ -20,6 +20,8 @@ type Config struct {
 	Retention  Retention
 	Verify     Verify
 	Panel      Panel
+	// Replicas son las copias adicionales (opcional). Vacío: todo funciona como siempre.
+	Replicas []Replica
 }
 
 // Agent identifica el equipo en los informes.

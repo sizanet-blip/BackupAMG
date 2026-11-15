@@ -33,6 +33,7 @@ type rawFile struct {
 	Retention  *rawRetention  `yaml:"retention"`
 	Verify     *rawVerify     `yaml:"verify"`
 	Panel      *rawPanel      `yaml:"panel"`
+	Replicas   []rawReplica   `yaml:"replicas"`
 }
 
 type rawAgent struct {
@@ -115,6 +116,7 @@ func (raw rawFile) validate() (*Config, error) {
 	if raw.Panel != nil {
 		problems = append(problems, applyPanel(*raw.Panel, cfg)...)
 	}
+	problems = append(problems, applyReplicas(raw.Replicas, cfg)...)
 
 	if len(problems) > 0 {
 		return nil, &ValidationError{Problems: problems}

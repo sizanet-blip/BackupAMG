@@ -157,6 +157,8 @@ func verificationDue(cfg *config.Config, now time.Time) (bool, error) {
 }
 
 func rememberVerify(rep report.Report, fileName string) error {
+	stateMu.Lock()
+	defer stateMu.Unlock()
 	st, err := state.Load(paths.StatePath())
 	if err != nil {
 		return err

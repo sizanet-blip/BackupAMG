@@ -65,23 +65,24 @@ type Server struct {
 
 // Hooks conecta el panel con las copias y la configuración del agente.
 type Hooks struct {
-	Status           func() any
-	Backup           func(user string) error
-	Verify           func(user string) error
-	Cancel           func(user string) error
-	LoadConfig       func() (any, error)
-	SaveConfig       func(raw []byte) (problems []string, err error)
-	LoadDestination  func() (any, error)
-	SaveDestination  func(raw []byte) (problems []string, err error)
-	TestDestination  func(raw []byte) (any, error)
-	ChangePassword   func(raw []byte) (problems []string, err error)
-	SetupStatus      func() (any, error)
-	CompleteSetup    func(raw []byte) (problems []string, err error)
-	History          func(status, from, to string) (any, error)
-	HistoryItem      func(id string) (any, error)
-	Snapshots        func() (any, error)
-	SnapshotFiles    func(id, path string) (any, error)
-	SnapshotFind     func(id, pattern string) (any, error)
+	Status          func() any
+	Backup          func(user string) error
+	Verify          func(user string) error
+	Cancel          func(user string) error
+	LoadConfig      func() (any, error)
+	SaveConfig      func(raw []byte) (problems []string, err error)
+	LoadDestination func() (any, error)
+	SaveDestination func(raw []byte) (problems []string, err error)
+	TestDestination func(raw []byte) (any, error)
+	ChangePassword  func(raw []byte) (problems []string, err error)
+	SetupStatus     func() (any, error)
+	CompleteSetup   func(raw []byte) (problems []string, err error)
+	History         func(status, from, to string) (any, error)
+	HistoryItem     func(id string) (any, error)
+	// El último argumento es el identificador de la copia adicional; vacío es la copia principal.
+	Snapshots        func(replica string) (any, error)
+	SnapshotFiles    func(id, path, replica string) (any, error)
+	SnapshotFind     func(id, pattern, replica string) (any, error)
 	RestoreTarget    func() (any, error)
 	StartRestore     func(raw []byte) (problems []string, err error)
 	Diagnostics      func() (any, error)
@@ -90,6 +91,13 @@ type Hooks struct {
 	Folders          func(path string) (any, error)
 	Shortcuts        func() any
 	Estimate         func(paths []string) (bytes int64, complete bool, err error)
+	// Copias adicionales (réplicas).
+	Replicas      func() (any, error)
+	AddReplica    func(raw []byte) (problems []string, err error)
+	UpdateReplica func(id string, raw []byte) (problems []string, err error)
+	RemoveReplica func(id string) error
+	TestReplica   func(raw []byte) (any, error)
+	RunReplica    func(id string) error
 }
 
 type ticket struct {
@@ -200,6 +208,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /app.js", s.handleAsset)
 	mux.HandleFunc("GET /config.js", s.handleAsset)
 	mux.HandleFunc("GET /destino.js", s.handleAsset)
+	mux.HandleFunc("GET /copias.js", s.handleAsset)
 	mux.HandleFunc("GET /asistente.js", s.handleAsset)
 	mux.HandleFunc("GET /historial.js", s.handleAsset)
 	mux.HandleFunc("GET /restaurar.js", s.handleAsset)
@@ -223,6 +232,12 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("POST /api/v1/destination", s.admin(http.HandlerFunc(s.handleSaveDestination)))
 	mux.Handle("POST /api/v1/destination/test", s.admin(http.HandlerFunc(s.handleTestDestination)))
 	mux.Handle("POST /api/v1/password", s.admin(http.HandlerFunc(s.handlePassword)))
+	mux.Handle("GET /api/v1/replicas", s.adminRead(http.HandlerFunc(s.handleReplicas)))
+	mux.Handle("POST /api/v1/replicas", s.admin(http.HandlerFunc(s.handleAddReplica)))
+	mux.Handle("POST /api/v1/replicas/test", s.admin(http.HandlerFunc(s.handleTestReplica)))
+	mux.Handle("PUT /api/v1/replicas/{id}", s.admin(http.HandlerFunc(s.handleUpdateReplica)))
+	mux.Handle("DELETE /api/v1/replicas/{id}", s.admin(http.HandlerFunc(s.handleRemoveReplica)))
+	mux.Handle("POST /api/v1/replicas/{id}/run", s.admin(http.HandlerFunc(s.handleRunReplica)))
 	mux.Handle("GET /api/v1/setup", s.withSession(http.HandlerFunc(s.handleSetupStatus)))
 	mux.Handle("POST /api/v1/setup", s.admin(http.HandlerFunc(s.handleSetup)))
 	mux.Handle("GET /api/v1/history", s.withSession(http.HandlerFunc(s.handleHistory)))
@@ -614,6 +629,86 @@ func (s *Server) handleTestDestination(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, body)
 }
 
+func (s *Server) replicaHooks() Hooks {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.hooks
+}
+
+func (s *Server) handleReplicas(w http.ResponseWriter, r *http.Request) {
+	fn := s.replicaHooks().Replicas
+	if fn == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "El agente todavía no está listo."})
+		return
+	}
+	body, err := fn()
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, body)
+}
+
+func (s *Server) handleAddReplica(w http.ResponseWriter, r *http.Request) {
+	s.change(w, r, "añadir copia adicional", 1<<20, s.replicaHooks().AddReplica)
+}
+
+func (s *Server) handleUpdateReplica(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	fn := s.replicaHooks().UpdateReplica
+	if fn == nil {
+		s.change(w, r, "cambiar copia adicional", 1<<20, nil)
+		return
+	}
+	s.change(w, r, "cambiar copia adicional", 1<<20, func(raw []byte) ([]string, error) { return fn(id, raw) })
+}
+
+func (s *Server) handleRemoveReplica(w http.ResponseWriter, r *http.Request) {
+	fn := s.replicaHooks().RemoveReplica
+	id := r.PathValue("id")
+	if fn == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "El agente todavía no está listo."})
+		return
+	}
+	sess, _ := s.sessionFrom(r)
+	if err := fn(id); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	s.audit(sess.User, "quitar copia adicional")
+	s.Publish()
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) handleRunReplica(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	fn := s.replicaHooks().RunReplica
+	if fn == nil {
+		s.act(w, r, "actualizar copia adicional", nil)
+		return
+	}
+	s.act(w, r, "actualizar copia adicional", func(string) error { return fn(id) })
+}
+
+func (s *Server) handleTestReplica(w http.ResponseWriter, r *http.Request) {
+	fn := s.replicaHooks().TestReplica
+	if fn == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "El agente todavía no está listo."})
+		return
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "No se pudo leer el formulario."})
+		return
+	}
+	body, err := fn(raw)
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, body)
+}
+
 func (s *Server) handlePassword(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	fn := s.hooks.ChangePassword
@@ -740,7 +835,7 @@ func (s *Server) handleSnapshots(w http.ResponseWriter, r *http.Request) {
 		if fn == nil {
 			return nil, errHookMissing
 		}
-		return fn()
+		return fn(r.URL.Query().Get("replica"))
 	})
 }
 
@@ -754,7 +849,7 @@ func (s *Server) handleSnapshotFiles(w http.ResponseWriter, r *http.Request) {
 		if fn == nil {
 			return nil, errHookMissing
 		}
-		return fn(id, dir)
+		return fn(id, dir, r.URL.Query().Get("replica"))
 	})
 }
 
@@ -768,7 +863,7 @@ func (s *Server) handleSnapshotFind(w http.ResponseWriter, r *http.Request) {
 		if fn == nil {
 			return nil, errHookMissing
 		}
-		return fn(id, pattern)
+		return fn(id, pattern, r.URL.Query().Get("replica"))
 	})
 }
 
@@ -884,6 +979,10 @@ func (s *Server) change(w http.ResponseWriter, r *http.Request, action string, l
 		return
 	}
 	problems, err := fn(raw)
+	var notice *Notice
+	if errors.As(err, &notice) {
+		err = nil // salió bien, pero hay algo que contar
+	}
 	for i, problem := range problems {
 		problems[i] = scrub(problem, raw)
 	}
@@ -898,8 +997,18 @@ func (s *Server) change(w http.ResponseWriter, r *http.Request, action string, l
 	}
 	s.audit(sess.User, action)
 	s.Publish()
+	if notice != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "notice": scrub(notice.Message, raw)})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
+
+// Notice es un aviso que acompaña a una acción que ha salido bien. Un gancho lo devuelve como
+// error y el panel responde «ok» con el texto en «notice».
+type Notice struct{ Message string }
+
+func (n *Notice) Error() string { return n.Message }
 
 func scrub(text string, raw []byte) string {
 	var body struct {

@@ -60,7 +60,7 @@ function nombreCarpeta(ruta) {
 
 function fraseActividad(item) {
   const disparo = textos.disparosLista[item.trigger] || "";
-  let base = item.type === "verify" ? textos.verificacionLista : (disparo || textos.tipos.backup);
+  let base = item.type === "verify" ? textos.verificacionLista : item.type === "replica" ? textos.tipos.replica : (disparo || textos.tipos.backup);
   if (item.status === "warning" && item.skipped) {
     base += " · " + item.skipped + " " + (item.skipped === 1 ? "archivo no se pudo leer" : "archivos no se pudieron leer");
   } else if (item.status === "failed") {
@@ -156,6 +156,7 @@ function pintar(estado) {
   disco.style.width = ancho + "%";
   disco.parentElement.hidden = enCurso;
   texto("destino-espacio", destino.connected && total > 0 ? (enCurso ? tamano(destino.free_bytes) + " libres" : tamano(destino.free_bytes) + " libres de " + tamano(total)) : textos.destinoAusente);
+  pintarCopiasInicio(estado.replicas || []);
   const tarjetas = document.getElementById("tarjetas");
   tarjetas.classList.toggle("ocupado", enCurso);
   document.querySelector(".actividad").hidden = enCurso;
@@ -203,6 +204,24 @@ function pintar(estado) {
   actividadAnterior = estado.activity || "";
 }
 
+// Línea de Inicio con el estado de las copias adicionales (si hay alguna).
+function pintarCopiasInicio(copias) {
+  const linea = document.getElementById("destino-copias");
+  const enlace = document.getElementById("ver-destinos");
+  const activas = copias.filter((c) => c.state !== "disabled");
+  linea.hidden = !activas.length;
+  enlace.hidden = !activas.length || rol !== "admin";
+  if (!activas.length) return;
+  const pendientes = activas.filter((c) => c.state !== "ok");
+  const t = textos.inicioCopias;
+  let frase = t.alDia;
+  if (pendientes.length) frase = (pendientes.length === 1 ? t.pendiente : t.pendientes).replace("{n}", pendientes.length);
+  linea.textContent = t.etiqueta + ": " + frase;
+  linea.className = "punto " + (!pendientes.length ? "ok" : pendientes.some((c) => c.stale) ? "aviso" : "");
+  enlace.textContent = t.ver;
+  enlace.onclick = () => mostrarPantalla("destino");
+}
+
 // Si algo no va bien, Inicio dice por qué y ofrece un botón para resolverlo.
 function pintarCausa(estado, nivel, enCurso) {
   const causa = document.getElementById("causa");
@@ -225,6 +244,10 @@ function pintarCausa(estado, nivel, enCurso) {
       accion = { etiqueta: textos.resolverHistorial, pantalla: "historial" };
     } else if (nivel === "red") {
       texto = textos.causaAntigua;
+    } else if (nivel === "yellow" && (estado.replicas || []).some((c) => c.stale)) {
+      const atrasada = (estado.replicas || []).find((c) => c.stale);
+      texto = textos.inicioCopias.causa.replace("{nombre}", atrasada.name).replace("{n}", atrasada.days_behind).replace("{dias}", atrasada.days_behind === 1 ? "día" : "días");
+      if (rol === "admin") accion = { etiqueta: textos.inicioCopias.ver, pantalla: "destino" };
     }
   }
   causa.hidden = !texto;
@@ -263,7 +286,7 @@ async function cargarRecientes() {
     textoFila.textContent = fraseActividad(item);
     const medida = document.createElement("span");
     medida.className = "nota";
-    medida.textContent = (item.type === "verify" ? "" : tamano(item.data_added_bytes) + " · ") + duracion(item.duration_seconds);
+    medida.textContent = (item.type === "verify" || item.type === "replica" ? "" : tamano(item.data_added_bytes) + " · ") + duracion(item.duration_seconds);
     const cuando = document.createElement("span");
     cuando.className = "nota";
     cuando.textContent = fechaRelativa(item.finished_at);

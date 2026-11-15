@@ -611,7 +611,9 @@ function textoHoja(equipo, destino) {
     "Hoja de recuperación de BackupAgent",
     "",
     "Equipo: " + (equipo || ""),
-    "Destino: " + (destino || ""),
+    ...(Array.isArray(destino)
+      ? ["Destinos (la misma contraseña en todos):", ...destino.map((d) => "  - " + d)]
+      : ["Destino: " + (destino || "")]),
     "Fecha: " + fecha,
     "",
     "Contraseña del repositorio (anótala a mano; esta hoja no la incluye):",

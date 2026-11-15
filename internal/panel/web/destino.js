@@ -33,31 +33,16 @@ function pintarDestino() {
   guardar.type = "button";
   guardar.textContent = textos.guardar;
 
-  const aviso = document.createElement("p");
-  aviso.className = "peligro";
-  aviso.textContent = textos.avisoClave;
-  const clave = document.createElement("h2");
-  clave.textContent = textos.cambiarClave;
-  const nueva = secreto(textos.nuevaClave);
-  const repite = secreto(textos.repiteClave);
-  nueva.etiqueta.classList.add("campo-columna");
-  repite.etiqueta.classList.add("campo-columna");
-  const casilla = document.createElement("label");
-  const marca = document.createElement("input");
-  marca.type = "checkbox";
-  casilla.append(marca, document.createTextNode(textos.guardadaClave));
-  const cambiar = document.createElement("button");
-  cambiar.type = "button";
-  cambiar.className = "secundario";
-  cambiar.textContent = textos.cambiarClave;
-  const resultadoClave = document.createElement("p");
-  resultadoClave.className = "resultado";
 
   tipo.className = "opciones-tipo";
   const acciones = document.createElement("div");
   acciones.className = "barra-filtros acciones-formulario";
   const faltaDestino = notaFalta();
-  acciones.append(probar, guardar, faltaDestino);
+  const cancelarCambio = document.createElement("button");
+  cancelarCambio.type = "button";
+  cancelarCambio.className = "secundario";
+  cancelarCambio.textContent = textos.cancelar;
+  acciones.append(probar, guardar, cancelarCambio, faltaDestino);
   const revisarDestino = exigir(guardar, faltaDestino, () => (ruta.value.trim() ? "" : textos.faltaDestino));
   const alCambiarRuta = () => { revisarDestino(); probar.disabled = !ruta.value.trim(); };
   ruta.addEventListener("input", alCambiarRuta);
@@ -65,24 +50,44 @@ function pintarDestino() {
   cajaDestino.className = "bloque";
   const hDestino = document.createElement("h2");
   hDestino.textContent = textos.tituloUbicacion;
-  cajaDestino.append(hDestino, tipo, ayuda, campo, notaDisco, ahora, explorar, acciones, resultado);
-  const cajaClave = document.createElement("article");
-  cajaClave.className = "bloque";
-  clave.textContent = textos.tituloClave;
-  const faltaClave = notaFalta();
-  const accionClave = document.createElement("div");
-  accionClave.className = "barra-filtros";
-  accionClave.append(cambiar, faltaClave);
-  const revisarClave = exigir(cambiar, faltaClave, () => {
-    if (!nueva.input.value) return textos.faltaClave;
-    if (nueva.input.value !== repite.input.value) return textos.noCoinciden + ".";
-    if (!marca.checked) return textos.faltaMarca;
-    return "";
-  });
-  [nueva.input, repite.input].forEach((campoClave) => campoClave.addEventListener("input", revisarClave));
-  marca.addEventListener("change", revisarClave);
-  cajaClave.append(clave, aviso, nueva.etiqueta, repite.etiqueta, casilla, accionClave, resultadoClave);
-  raiz.append(titulo, cajaDestino, cajaClave);
+  // Con un destino ya configurado se ve solo un resumen; el selector se despliega con «Cambiar carpeta».
+  const resumen = document.createElement("div");
+  resumen.className = "destino-resumen";
+  const iconoResumen = document.createElement("span");
+  iconoResumen.className = "destino-resumen-icono";
+  iconoResumen.innerHTML = iconoSvg("hard-drive");
+  const textoResumen = document.createElement("div");
+  textoResumen.className = "destino-resumen-texto";
+  const rutaResumen = document.createElement("strong");
+  const detalleResumen = document.createElement("span");
+  detalleResumen.className = "nota";
+  textoResumen.append(rutaResumen, detalleResumen, notaDisco, ahora);
+  const cambiar = document.createElement("button");
+  cambiar.type = "button";
+  cambiar.className = "secundario";
+  cambiar.textContent = textos.cambiarCarpeta;
+  cambiar.setAttribute("aria-expanded", "false");
+  cambiar.setAttribute("aria-controls", "editor-destino");
+  resumen.append(iconoResumen, textoResumen, cambiar);
+  const editor = document.createElement("div");
+  editor.id = "editor-destino";
+  editor.hidden = true;
+  editor.append(tipo, ayuda, campo, explorar, acciones, resultado);
+  cajaDestino.append(hDestino, resumen, editor);
+  // La contraseña ya no se cambia aquí: protege todos los destinos y vive en Ajustes → Seguridad.
+  const cajaEnlaceClave = document.createElement("article");
+  cajaEnlaceClave.className = "bloque enlace-clave";
+  const textoEnlaceClave = document.createElement("p");
+  textoEnlaceClave.className = "nota";
+  textoEnlaceClave.textContent = textos.seguridad.enDestinos;
+  const irAClave = document.createElement("button");
+  irAClave.type = "button";
+  irAClave.className = "enlace";
+  irAClave.textContent = textos.seguridad.enlace;
+  irAClave.addEventListener("click", () => mostrarPantalla("ajustes"));
+  cajaEnlaceClave.append(textoEnlaceClave, irAClave);
+  cajaDestino.querySelector("h2").textContent = textos.copias.principal;
+  raiz.append(titulo, cajaDestino, crearCopiasAdicionales(), cajaEnlaceClave);
 
   function modo() {
     return red.input.checked ? "unc" : "local";
@@ -91,8 +96,40 @@ function pintarDestino() {
     const redActiva = modo() === "unc";
     ayuda.textContent = redActiva ? textos.ayudaRed : textos.ayudaDisco;
     explorar.hidden = redActiva;
-    if (!redActiva) explorador.cargarSiHaceFalta();
+    if (!redActiva && !editor.hidden) explorador.cargarSiHaceFalta();
   }
+  function pintarResumen(datos) {
+    rutaResumen.textContent = datos.resolved || datos.path || "";
+    const partes = [];
+    if (datos.label) partes.push(datos.label);
+    partes.push(datos.connected ? (datos.free_bytes > 0 ? tamano(datos.free_bytes) + " libres" : textos.conectado) : textos.desconectado);
+    detalleResumen.textContent = partes.join(" · ");
+  }
+  function desplegar() {
+    editor.hidden = false;
+    cambiar.setAttribute("aria-expanded", "true");
+    pintarModo();
+    ruta.focus();
+  }
+  function plegar(devolverFoco) {
+    editor.hidden = true;
+    cambiar.setAttribute("aria-expanded", "false");
+    if (devolverFoco) cambiar.focus();
+  }
+  cambiar.addEventListener("click", () => { if (editor.hidden) desplegar(); else plegar(true); });
+  cancelarCambio.addEventListener("click", () => {
+    ruta.value = rutaGuardada;
+    resultado.textContent = "";
+    resultado.className = "resultado";
+    alCambiarRuta();
+    plegar(true);
+  });
+  document.addEventListener("keydown", function alEscape(evento) {
+    if (!document.body.contains(editor)) { document.removeEventListener("keydown", alEscape); return; }
+    if (evento.key === "Escape" && !editor.hidden && editor.contains(document.activeElement) && !document.querySelector(".modal-fondo")) {
+      cancelarCambio.click();
+    }
+  });
   local.input.addEventListener("change", pintarModo);
   red.input.addEventListener("change", pintarModo);
 
@@ -113,7 +150,9 @@ function pintarDestino() {
       ahora.hidden = false;
       ahora.textContent = textos.ahoraEn + " " + datos.resolved;
     }
+    pintarResumen(datos);
     pintarModo();
+    if (!rutaGuardada) desplegar();
   }).catch(() => {
     resultado.textContent = textos.error;
   });
@@ -177,34 +216,8 @@ function pintarDestino() {
     } else {
       ahora.hidden = true;
     }
-  });
-
-  cambiar.addEventListener("click", async () => {
-    if (!(await confirmarSiNo({
-      titulo: textos.cambiarClaveTitulo,
-      texto: textos.confirmarClave,
-      aceptar: textos.cambiarClaveBoton,
-      peligro: true
-    }))) return;
-    cambiar.disabled = true;
-    const respuesta = await fetch("/api/v1/password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
-      body: JSON.stringify({ password: nueva.input.value, confirm: repite.input.value, acknowledged: marca.checked })
-    });
-    const cuerpo = await respuesta.json().catch(() => ({}));
-    cambiar.disabled = false;
-    if (!respuesta.ok) {
-      resultadoClave.className = "resultado";
-      resultadoClave.textContent = (cuerpo.fields || [cuerpo.error || textos.error]).join(" ");
-      return;
-    }
-    nueva.input.value = "";
-    repite.input.value = "";
-    marca.checked = false;
-    revisarClave();
-    resultadoClave.className = "resultado aviso-ok";
-    resultadoClave.textContent = textos.claveGuardada;
+    pintarResumen(datos);
+    plegar(true);
   });
 }
 
@@ -216,16 +229,5 @@ function radio(valor, texto, marcado) {
   input.value = valor;
   input.checked = marcado;
   etiqueta.append(input, document.createTextNode(texto));
-  return { etiqueta, input };
-}
-
-function secreto(texto) {
-  const etiqueta = document.createElement("label");
-  etiqueta.className = "campo-columna";
-  etiqueta.append(document.createTextNode(texto));
-  const input = document.createElement("input");
-  input.type = "password";
-  input.autocomplete = "new-password";
-  etiqueta.append(input);
   return { etiqueta, input };
 }

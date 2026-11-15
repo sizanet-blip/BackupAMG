@@ -625,3 +625,38 @@ button[disabled] { cursor: not-allowed; }
 .contenido:focus { outline: none; }
 input[type="date"]:focus-within, input[type="time"]:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .fila-hora:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Copias adicionales (pantalla Destinos) */
+.copias .bloque-cabeza h2 + .nota { margin-bottom: 0; }
+.consejo { margin: 14px 0 0; padding: 12px 14px; border-radius: var(--radio-control); background: var(--accent-soft); color: var(--accent-text); font-size: 14px; }
+.copias-lista { display: grid; gap: 12px; margin-top: 14px; }
+.copias-vacio { padding: 18px; border: 1px dashed var(--border-strong); border-radius: var(--radio-control); text-align: center; }
+.copia-adicional { padding: 16px; border: 1px solid var(--border); border-radius: var(--radio-control); background: var(--surface-muted); }
+.copia-adicional h3 { margin: 0; font-size: 15px; font-weight: 700; overflow-wrap: anywhere; }
+.copia-adicional .nota { overflow-wrap: anywhere; }
+.causa-copia { margin: 8px 0 0; font-size: 14px; color: var(--text-2); }
+.causa-copia.aviso-ambar { color: var(--warn); }
+.acciones-copia { margin-top: 12px; gap: 8px; }
+.copias-asistente { margin-top: 16px; padding: 20px; border: 1px solid var(--border-strong); border-radius: var(--radio-tarjeta); background: var(--surface); }
+.copias-asistente h3 { margin: 0 0 12px; font-size: 18px; }
+.pasos-3 { grid-template-columns: repeat(3, 1fr); }
+.opciones-grandes { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.opcion-grande { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left; padding: 16px 16px 16px 44px; }
+.opcion-grande .nota { margin: 0; }
+.cuando-copia { margin: 16px 0 0; padding: 0; border: 0; }
+.cuando-copia legend { padding: 0; font-weight: 600; margin-bottom: 4px; }
+.radio-copia { display: flex; align-items: center; gap: 10px; min-height: 44px; margin: 0; }
+.radio-copia input[type="time"] { width: auto; margin: 0 0 0 4px; }
+.copia-adicional .pastilla:not(.ok):not(.aviso):not(.error):not(.curso) { background: var(--surface); border: 1px solid var(--border-strong); }
+.copia-adicional .resultado:empty { display: none; }
+
+/* Destino principal plegado: resumen y botón «Cambiar carpeta» */
+.destino-resumen { display: flex; align-items: center; gap: 14px; margin-top: 14px; padding: 14px 16px; border-radius: var(--radio-control); background: var(--surface-muted); }
+.destino-resumen-icono { flex: none; width: 24px; height: 24px; color: var(--text-2); }
+.destino-resumen-icono svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.destino-resumen-texto { flex: 1; min-width: 0; }
+.destino-resumen-texto strong { display: block; overflow-wrap: anywhere; }
+.destino-resumen-texto .nota { display: block; margin: 2px 0 0; }
+.destino-resumen > button { flex: none; }
+#editor-destino { margin-top: 12px; }
+@media (max-width: 640px) { .destino-resumen { flex-wrap: wrap; } .destino-resumen > button { width: 100%; } }
